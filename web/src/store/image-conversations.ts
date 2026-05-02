@@ -109,6 +109,7 @@ const imageConversationStorage = localforage.createInstance({
 const LEGACY_IMAGE_CONVERSATIONS_KEY = "items";
 const IMAGE_CONVERSATION_STORAGE_MODE_KEY =
   "chatgpt2api:image-conversation-storage-mode";
+const SHARED_EXAMPLES_SEEDED_KEY = "items:shared-examples-seeded";
 let cachedConversations: ImageConversation[] | null = null;
 let cachedConversationsStorageMode: ImageConversationStorageMode | null = null;
 let cachedConversationsScope: string | null = null;
@@ -150,6 +151,49 @@ async function getCurrentAuthIdentity(): Promise<StoredAuthIdentity | null> {
 
 async function getCurrentConversationScope() {
   return (await getCurrentAuthIdentity())?.scope ?? "anonymous";
+}
+
+function mergeConversationLists(
+  sharedItems: ImageConversation[],
+  scopedItems: ImageConversation[],
+) {
+  const merged = new Map<string, ImageConversation>();
+  sharedItems.map(normalizeConversation).forEach((item) => {
+    merged.set(item.id, item);
+  });
+  scopedItems.map(normalizeConversation).forEach((item) => {
+    merged.set(item.id, item);
+  });
+  return sortConversations([...merged.values()]);
+}
+
+function hasSeededSharedExamples(scope: string) {
+  if (typeof window === "undefined") {
+    return true;
+  }
+  try {
+    return (
+      window.localStorage.getItem(
+        `${SHARED_EXAMPLES_SEEDED_KEY}:${sanitizeStorageScope(scope)}`,
+      ) === "1"
+    );
+  } catch {
+    return true;
+  }
+}
+
+function markSharedExamplesSeeded(scope: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      `${SHARED_EXAMPLES_SEEDED_KEY}:${sanitizeStorageScope(scope)}`,
+      "1",
+    );
+  } catch {
+    // Ignore localStorage write failures.
+  }
 }
 
 function readPersistedImageConversationStorageMode(
@@ -203,29 +247,32 @@ async function loadConversationCache(): Promise<ImageConversation[]> {
   if (!loadPromise || loadPromiseScope !== scope) {
     loadPromiseScope = scope;
     loadPromise = (async () => {
-      let items =
+      const scopedItems =
         (await imageConversationStorage.getItem<ImageConversation[]>(
           storageKey,
         )) || [];
-      if (items.length === 0 && identity?.isAdmin) {
-        const legacyItems =
-          (await imageConversationStorage.getItem<ImageConversation[]>(
-            LEGACY_IMAGE_CONVERSATIONS_KEY,
-          )) || [];
-        if (legacyItems.length > 0) {
-          items = legacyItems;
-          await imageConversationStorage.setItem(storageKey, legacyItems);
-          await imageConversationStorage.removeItem(
-            LEGACY_IMAGE_CONVERSATIONS_KEY,
-          );
-        }
-      }
-        cachedConversations = sortConversations(
-          items.map(normalizeConversation),
+      let sharedItems =
+        (await imageConversationStorage.getItem<ImageConversation[]>(
+          LEGACY_IMAGE_CONVERSATIONS_KEY,
+        )) || [];
+
+      if (
+        sharedItems.length === 0 &&
+        scopedItems.length > 0 &&
+        identity?.isAdmin &&
+        !hasSeededSharedExamples(scope)
+      ) {
+        sharedItems = scopedItems;
+        await imageConversationStorage.setItem(
+          LEGACY_IMAGE_CONVERSATIONS_KEY,
+          sharedItems,
         );
-        cachedConversationsStorageMode = "browser";
-        cachedConversationsScope = scope;
-        return cachedConversations;
+        markSharedExamplesSeeded(scope);
+      }
+      cachedConversations = mergeConversationLists(sharedItems, scopedItems);
+      cachedConversationsStorageMode = "browser";
+      cachedConversationsScope = scope;
+      return cachedConversations;
     })().finally(() => {
       if (loadPromiseScope === scope) {
         loadPromise = null;
@@ -780,9 +827,6 @@ export async function clearImageConversations(): Promise<void> {
   loadPromiseScope = null;
   writeQueue = writeQueue.then(async () => {
     await imageConversationStorage.removeItem(storageKey);
-    if (identity?.isAdmin) {
-      await imageConversationStorage.removeItem(LEGACY_IMAGE_CONVERSATIONS_KEY);
-    }
   });
   await writeQueue;
 }
