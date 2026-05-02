@@ -12,6 +12,11 @@ import {
 } from "@/lib/api";
 import webConfig from "@/constants/common-env";
 import { httpRequest } from "@/lib/request";
+import {
+  getStoredAuthIdentity,
+  getStoredAuthIdentitySync,
+  type StoredAuthIdentity,
+} from "@/store/auth";
 
 export type ImageMode = "generate" | "edit";
 
@@ -101,27 +106,61 @@ const imageConversationStorage = localforage.createInstance({
   storeName: "image_conversations",
 });
 
-const IMAGE_CONVERSATIONS_KEY = "items";
+const LEGACY_IMAGE_CONVERSATIONS_KEY = "items";
 const IMAGE_CONVERSATION_STORAGE_MODE_KEY =
   "chatgpt2api:image-conversation-storage-mode";
 let cachedConversations: ImageConversation[] | null = null;
 let cachedConversationsStorageMode: ImageConversationStorageMode | null = null;
+let cachedConversationsScope: string | null = null;
 let loadPromise: Promise<ImageConversation[]> | null = null;
+let loadPromiseScope: string | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
 let cachedImageConversationStorageMode: "browser" | "server" | null =
   readPersistedImageConversationStorageMode();
+let cachedImageConversationStorageModeScope: string | null =
+  getCurrentConversationScopeSync();
 
 function sortConversations(items: ImageConversation[]) {
   return [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-function readPersistedImageConversationStorageMode(): ImageConversationStorageMode | null {
+function sanitizeStorageScope(value: string) {
+  return String(value || "anonymous")
+    .trim()
+    .replace(/[^a-zA-Z0-9:_.-]/g, "_");
+}
+
+function imageConversationsKeyForScope(scope: string) {
+  return `${LEGACY_IMAGE_CONVERSATIONS_KEY}:${sanitizeStorageScope(scope)}`;
+}
+
+function storageModeKeyForScope(scope: string | null) {
+  return scope
+    ? `${IMAGE_CONVERSATION_STORAGE_MODE_KEY}:${sanitizeStorageScope(scope)}`
+    : IMAGE_CONVERSATION_STORAGE_MODE_KEY;
+}
+
+function getCurrentConversationScopeSync() {
+  return getStoredAuthIdentitySync()?.scope ?? null;
+}
+
+async function getCurrentAuthIdentity(): Promise<StoredAuthIdentity | null> {
+  return getStoredAuthIdentity();
+}
+
+async function getCurrentConversationScope() {
+  return (await getCurrentAuthIdentity())?.scope ?? "anonymous";
+}
+
+function readPersistedImageConversationStorageMode(
+  scope = getCurrentConversationScopeSync(),
+): ImageConversationStorageMode | null {
   if (typeof window === "undefined") {
     return null;
   }
   try {
     const raw = window.localStorage.getItem(
-      IMAGE_CONVERSATION_STORAGE_MODE_KEY,
+      storageModeKeyForScope(scope),
     );
     return raw === "server" ? "server" : raw === "browser" ? "browser" : null;
   } catch {
@@ -131,38 +170,67 @@ function readPersistedImageConversationStorageMode(): ImageConversationStorageMo
 
 function persistImageConversationStorageMode(
   mode: ImageConversationStorageMode | null,
+  scope = getCurrentConversationScopeSync(),
 ) {
   if (typeof window === "undefined") {
     return;
   }
   try {
+    const key = storageModeKeyForScope(scope);
     if (mode) {
-      window.localStorage.setItem(IMAGE_CONVERSATION_STORAGE_MODE_KEY, mode);
+      window.localStorage.setItem(key, mode);
       return;
     }
-    window.localStorage.removeItem(IMAGE_CONVERSATION_STORAGE_MODE_KEY);
+    window.localStorage.removeItem(key);
   } catch {
     // Ignore localStorage write failures and keep using in-memory state.
   }
 }
 
 async function loadConversationCache(): Promise<ImageConversation[]> {
-  if (cachedConversations && cachedConversationsStorageMode === "browser") {
+  const identity = await getCurrentAuthIdentity();
+  const scope = identity?.scope ?? "anonymous";
+  const storageKey = imageConversationsKeyForScope(scope);
+
+  if (
+    cachedConversations &&
+    cachedConversationsStorageMode === "browser" &&
+    cachedConversationsScope === scope
+  ) {
     return cachedConversations;
   }
 
-  if (!loadPromise) {
-    loadPromise = imageConversationStorage
-      .getItem<ImageConversation[]>(IMAGE_CONVERSATIONS_KEY)
-      .then((items) => {
+  if (!loadPromise || loadPromiseScope !== scope) {
+    loadPromiseScope = scope;
+    loadPromise = (async () => {
+      let items =
+        (await imageConversationStorage.getItem<ImageConversation[]>(
+          storageKey,
+        )) || [];
+      if (items.length === 0 && identity?.isAdmin) {
+        const legacyItems =
+          (await imageConversationStorage.getItem<ImageConversation[]>(
+            LEGACY_IMAGE_CONVERSATIONS_KEY,
+          )) || [];
+        if (legacyItems.length > 0) {
+          items = legacyItems;
+          await imageConversationStorage.setItem(storageKey, legacyItems);
+          await imageConversationStorage.removeItem(
+            LEGACY_IMAGE_CONVERSATIONS_KEY,
+          );
+        }
+      }
         cachedConversations = sortConversations(
-          (items || []).map(normalizeConversation),
+          items.map(normalizeConversation),
         );
         cachedConversationsStorageMode = "browser";
+        cachedConversationsScope = scope;
         return cachedConversations;
-      })
-      .finally(() => {
+    })().finally(() => {
+      if (loadPromiseScope === scope) {
         loadPromise = null;
+        loadPromiseScope = null;
+      }
       });
   }
 
@@ -173,6 +241,10 @@ export function getCachedImageConversationsSnapshot():
   | ImageConversation[]
   | null {
   if (!cachedConversations) {
+    return null;
+  }
+  const currentScope = getCurrentConversationScopeSync();
+  if (!currentScope || cachedConversationsScope !== currentScope) {
     return null;
   }
   if (!cachedImageConversationStorageMode) {
@@ -191,27 +263,34 @@ export function getCachedImageConversationsSnapshot():
 function setCachedConversationsSnapshot(
   items: ImageConversation[],
   storageMode: ImageConversationStorageMode,
+  scope = getCurrentConversationScopeSync() ?? "anonymous",
 ) {
   cachedConversations = sortConversations(items.map(normalizeConversation));
   cachedConversationsStorageMode = storageMode;
+  cachedConversationsScope = scope;
   return cachedConversations;
 }
 
 export function setCachedImageConversationStorageMode(
   mode: ImageConversationStorageMode | null,
 ) {
+  const scope = getCurrentConversationScopeSync();
   cachedImageConversationStorageMode = mode;
-  persistImageConversationStorageMode(mode);
+  cachedImageConversationStorageModeScope = scope;
+  persistImageConversationStorageMode(mode, scope);
 }
 
 async function persistConversationCache() {
+  const scope = await getCurrentConversationScope();
+  const storageKey = imageConversationsKeyForScope(scope);
   const snapshot = sortConversations(
     (cachedConversations || []).map(normalizeConversation),
   );
   cachedConversations = snapshot;
   cachedConversationsStorageMode = "browser";
+  cachedConversationsScope = scope;
   writeQueue = writeQueue.then(async () => {
-    await imageConversationStorage.setItem(IMAGE_CONVERSATIONS_KEY, snapshot);
+    await imageConversationStorage.setItem(storageKey, snapshot);
   });
   await writeQueue;
 }
@@ -430,22 +509,39 @@ export function normalizeConversation(
 }
 
 async function getImageConversationStorageMode() {
-  if (cachedImageConversationStorageMode) {
+  const scope = await getCurrentConversationScope();
+  if (
+    cachedImageConversationStorageMode &&
+    cachedImageConversationStorageModeScope === scope
+  ) {
     return cachedImageConversationStorageMode;
+  }
+  const persistedMode = readPersistedImageConversationStorageMode(scope);
+  if (persistedMode) {
+    cachedImageConversationStorageMode = persistedMode;
+    cachedImageConversationStorageModeScope = scope;
+    return persistedMode;
   }
   try {
     const config = await fetchConfig();
-    setCachedImageConversationStorageMode(
+    const mode =
       config.storage.imageConversationStorage === "server"
         ? "server"
-        : "browser",
-    );
-    return cachedImageConversationStorageMode;
+        : "browser";
+    cachedImageConversationStorageMode = mode;
+    cachedImageConversationStorageModeScope = scope;
+    persistImageConversationStorageMode(mode, scope);
+    return mode;
   } catch (error) {
-    if (cachedImageConversationStorageMode) {
+    if (
+      cachedImageConversationStorageMode &&
+      cachedImageConversationStorageModeScope === scope
+    ) {
       return cachedImageConversationStorageMode;
     }
-    setCachedImageConversationStorageMode("browser");
+    cachedImageConversationStorageMode = "browser";
+    cachedImageConversationStorageModeScope = scope;
+    persistImageConversationStorageMode("browser", scope);
     return "browser";
   }
 }
@@ -674,11 +770,19 @@ export async function clearImageConversations(): Promise<void> {
     setCachedConversationsSnapshot([], "server");
     return;
   }
+  const identity = await getCurrentAuthIdentity();
+  const scope = identity?.scope ?? "anonymous";
+  const storageKey = imageConversationsKeyForScope(scope);
   cachedConversations = [];
   cachedConversationsStorageMode = "browser";
+  cachedConversationsScope = scope;
   loadPromise = null;
+  loadPromiseScope = null;
   writeQueue = writeQueue.then(async () => {
-    await imageConversationStorage.removeItem(IMAGE_CONVERSATIONS_KEY);
+    await imageConversationStorage.removeItem(storageKey);
+    if (identity?.isAdmin) {
+      await imageConversationStorage.removeItem(LEGACY_IMAGE_CONVERSATIONS_KEY);
+    }
   });
   await writeQueue;
 }
