@@ -1438,6 +1438,9 @@ func (s *Server) runImageRequestWithAdmission(ctx context.Context, authFile *acc
 		if isTransientImageStreamError(err) {
 			return nil, true, err
 		}
+		if isImageNoOutputError(err) && !preferredAccount {
+			return nil, true, err
+		}
 		if isInvalidImageTokenError(err) {
 			store.MarkImageTokenAbnormal(authFile.AccessToken)
 			if preferredAccount {
@@ -1936,6 +1939,15 @@ func isTransientImageStreamError(err error) bool {
 		}
 	}
 	return false
+}
+
+func isImageNoOutputError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "no images generated") ||
+		strings.Contains(message, "model may have refused")
 }
 
 func isConversationContextError(err error) bool {

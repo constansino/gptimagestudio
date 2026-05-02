@@ -464,6 +464,27 @@ func TestIsTransientImageStreamError(t *testing.T) {
 	}
 }
 
+func TestIsImageNoOutputError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "no images generated", err: errors.New("no images generated"), want: true},
+		{name: "model refused", err: errors.New("no images generated — the model may have refused the request"), want: true},
+		{name: "other error", err: errors.New("SSE read error: unexpected EOF"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isImageNoOutputError(tt.err); got != tt.want {
+				t.Fatalf("isImageNoOutputError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStudioPaidResolutionUsesPaidAccount(t *testing.T) {
 	server, recorder := newImageModeCompatTestServerWithOptions(t, imageModeCompatScenario{
 		imageMode:   "studio",

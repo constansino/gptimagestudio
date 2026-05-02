@@ -648,7 +648,7 @@ func (m *imageTaskManager) failTask(taskID string, err error) {
 func (m *imageTaskManager) updateTaskBlocker(taskID string, blocker imageTaskBlocker) {
 	m.mu.Lock()
 	task := m.tasks[taskID]
-	if task == nil || task.Status != imageTaskStatusQueued {
+	if task == nil || (task.Status != imageTaskStatusQueued && task.Status != imageTaskStatusRunning) {
 		m.mu.Unlock()
 		return
 	}
