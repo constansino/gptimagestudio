@@ -460,7 +460,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.authenticateNewAPIUser(r.Context(), body.Username, body.Password)
 	if err != nil {
-		writeImageRequestError(w, err)
+		writeAuthRequestError(w, err)
 		return
 	}
 	session := newAuthSessionFromNewAPIUser(user)
@@ -1925,6 +1925,19 @@ func writeImageRequestError(w http.ResponseWriter, err error) {
 		return
 	}
 	writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+}
+
+func writeAuthRequestError(w http.ResponseWriter, err error) {
+	switch requestErrorCode(err) {
+	case "newapi_login_failed":
+		writeAPIError(w, http.StatusUnauthorized, "newapi_login_failed", err.Error())
+	case "newapi_user_disabled":
+		writeAPIError(w, http.StatusForbidden, "newapi_user_disabled", err.Error())
+	case "newapi_not_configured":
+		writeAPIError(w, http.StatusServiceUnavailable, "newapi_not_configured", err.Error())
+	default:
+		writeImageRequestError(w, err)
+	}
 }
 
 func isInvalidImageTokenError(err error) bool {
