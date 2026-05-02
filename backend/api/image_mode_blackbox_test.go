@@ -302,6 +302,76 @@ func TestImageGenerationsRunConcurrentlyAcrossAvailableAccounts(t *testing.T) {
 	}
 }
 
+func TestImageGenerationsRespectRequestedParallelLimit(t *testing.T) {
+	server, recorder := newImageModeCompatTestServerWithOptions(t, imageModeCompatScenario{
+		imageMode:   "studio",
+		accountType: "Free",
+		freeRoute:   "legacy",
+		freeModel:   "auto",
+		paidRoute:   "responses",
+		paidModel:   "gpt-5.4-mini",
+	}, compatTestServerOptions{
+		accounts: []compatSeedAccount{
+			{
+				fileName:    "parallel-limit-1.json",
+				accessToken: "token-parallel-limit-1",
+				accountType: "Free",
+				priority:    30,
+				quota:       5,
+				status:      "正常",
+			},
+			{
+				fileName:    "parallel-limit-2.json",
+				accessToken: "token-parallel-limit-2",
+				accountType: "Free",
+				priority:    20,
+				quota:       5,
+				status:      "正常",
+			},
+			{
+				fileName:    "parallel-limit-3.json",
+				accessToken: "token-parallel-limit-3",
+				accountType: "Free",
+				priority:    10,
+				quota:       5,
+				status:      "正常",
+			},
+		},
+	})
+
+	var active int32
+	var maxActive int32
+	server.officialClientFactory = func(accessToken, proxyURL string, authData map[string]any, requestConfig handler.ImageRequestConfig) imageWorkflowClient {
+		_ = proxyURL
+		_ = authData
+		_ = requestConfig
+		recorder.officialCalls++
+		return &parallelGenerateWorkflowClient{
+			token:     accessToken,
+			active:    &active,
+			maxActive: &maxActive,
+			delay:     30 * time.Millisecond,
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"prompt":"parallel limited prompt","n":3,"parallel":1,"response_format":"b64_json"}`))
+	req.Header.Set("Authorization", "Bearer "+server.cfg.App.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if recorder.officialCalls != 3 {
+		t.Fatalf("official client calls = %d, want 3", recorder.officialCalls)
+	}
+	if got := atomic.LoadInt32(&maxActive); got != 1 {
+		t.Fatalf("max concurrent generate calls = %d, want 1", got)
+	}
+}
+
 func TestImageGenerationsStaySerialWhenOnlyOneAccountIsAvailable(t *testing.T) {
 	server, recorder := newImageModeCompatTestServerWithOptions(t, imageModeCompatScenario{
 		imageMode:   "studio",

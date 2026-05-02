@@ -12,8 +12,8 @@ func TestImageQueueAndQuotaRefreshDefaults(t *testing.T) {
 	}
 
 	maxConcurrency, queueLimit, queueTimeout := cfg.ImageQueueConfig()
-	if maxConcurrency != 8 {
-		t.Fatalf("maxConcurrency = %d, want 8", maxConcurrency)
+	if maxConcurrency != 0 {
+		t.Fatalf("maxConcurrency = %d, want 0", maxConcurrency)
 	}
 	if queueLimit != 32 {
 		t.Fatalf("queueLimit = %d, want 32", queueLimit)

@@ -813,6 +813,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		Model          string `json:"model"`
 		Prompt         string `json:"prompt"`
 		N              int    `json:"n"`
+		Parallel       int    `json:"parallel"`
 		Size           string `json:"size"`
 		Quality        string `json:"quality"`
 		Background     string `json:"background"`
@@ -834,6 +835,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		Model:          req.Model,
 		Prompt:         req.Prompt,
 		N:              req.N,
+		Parallel:       req.Parallel,
 		Size:           req.Size,
 		Quality:        req.Quality,
 		Background:     req.Background,
@@ -857,9 +859,10 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "prompt is required"})
 		return
 	}
-	requestedModel := normalizeRequestedImageModel(r.FormValue("model"), s.cfg.ChatGPT.Model)
+	modelSpec := resolveImageModelSpec(r.FormValue("model"), s.cfg.ChatGPT.Model)
+	requestedModel := modelSpec.CanonicalModel
 	responseFormat := firstNonEmpty(r.FormValue("response_format"), s.cfg.App.ImageFormat, "url")
-	size := strings.TrimSpace(r.FormValue("size"))
+	size := resolveImageModelRequestSize(r.FormValue("size"), modelSpec)
 	quality := strings.TrimSpace(r.FormValue("quality"))
 	mask, err := readOptionalMultipartFile(r.MultipartForm, "mask")
 	if err != nil {
@@ -1476,15 +1479,7 @@ func (s *Server) runImageRequestWithAdmission(ctx context.Context, authFile *acc
 }
 
 func normalizeRequestedImageModel(requested, fallback string) string {
-	model := strings.TrimSpace(requested)
-	if model != "" {
-		return model
-	}
-	model = strings.TrimSpace(fallback)
-	if model != "" {
-		return model
-	}
-	return "gpt-image-2"
+	return resolveImageModelSpec(requested, fallback).CanonicalModel
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -1516,7 +1511,9 @@ func (s *Server) availableModels() []string {
 		items = append(items, model)
 	}
 
-	add("gpt-image-2")
+	for _, model := range supportedImageModelIDs() {
+		add(model)
+	}
 	add(strings.TrimSpace(s.cfg.ChatGPT.Model))
 
 	accountsList, err := s.getStore().ListAccounts()
@@ -2018,7 +2015,7 @@ func (s *Server) imageRequestConfig() handler.ImageRequestConfig {
 
 func (s *Server) resolveImageUpstreamModel(requestedModel, accountType string) string {
 	return handler.ResolveImageUpstreamModelWithDefaults(
-		requestedModel,
+		normalizeRequestedImageModel(requestedModel, s.cfg.ChatGPT.Model),
 		accountType,
 		s.cfg.ChatGPT.FreeImageModel,
 		s.cfg.ChatGPT.PaidImageModel,
@@ -2039,11 +2036,15 @@ func normalizeConfiguredImageRoute(value, fallback string) string {
 }
 
 func resolveLoggedImageToolModel(requestedModel string) string {
-	switch strings.ToLower(strings.TrimSpace(requestedModel)) {
-	case "gpt-image-1":
-		return "gpt-image-1"
-	case "gpt-image-2":
-		return "gpt-image-2"
+	if strings.TrimSpace(requestedModel) == "" {
+		return ""
+	}
+	spec := resolveImageModelSpec(requestedModel, "")
+	switch strings.ToLower(strings.TrimSpace(spec.CanonicalModel)) {
+	case defaultImageModelV1:
+		return defaultImageModelV1
+	case defaultImageModelV2:
+		return defaultImageModelV2
 	default:
 		return ""
 	}

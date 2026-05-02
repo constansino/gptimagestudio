@@ -33,6 +33,7 @@ type UseImageSubmitOptions = {
   maskSource: StoredSourceImage | null;
   sourceImages: StoredSourceImage[];
   parsedCount: number;
+  parsedParallel?: number;
   imageSize: string;
   imageResolutionAccess: ImageResolutionAccess;
   imageQuality: ImageQuality;
@@ -63,6 +64,7 @@ function buildConversationBase(
     prompt: draftTurn.prompt,
     model: draftTurn.model,
     count: draftTurn.count,
+    parallel: draftTurn.parallel,
     size: draftTurn.size,
     resolutionAccess: draftTurn.resolutionAccess,
     quality: draftTurn.quality,
@@ -114,6 +116,7 @@ export function useImageSubmit({
   maskSource,
   sourceImages,
   parsedCount,
+  parsedParallel,
   imageSize,
   imageResolutionAccess,
   imageQuality,
@@ -174,6 +177,7 @@ export function useImageSubmit({
         prompt,
         model: imageModel,
         count: 1,
+        parallel: undefined,
         size: supportsEditableOutputOptions ? imageSize : undefined,
         resolutionAccess: supportsEditableOutputOptions
           ? imageResolutionAccess
@@ -352,6 +356,7 @@ export function useImageSubmit({
         prompt,
         model: turn.model,
         count: displayCount,
+        parallel: turn.parallel,
         size: turn.size,
         resolutionAccess: turn.resolutionAccess,
         quality: turnQuality,
@@ -382,6 +387,7 @@ export function useImageSubmit({
           prompt,
           model: turn.model,
           count: requestCount,
+          parallel: isSingleImageRetry ? undefined : turn.parallel,
           retryImageIndex: isSingleImageRetry ? imageIndex : undefined,
           size: turn.size,
           resolutionAccess: turn.resolutionAccess,
@@ -475,8 +481,10 @@ export function useImageSubmit({
 
     const conversationId = selectedConversationId ?? makeId();
     const turnId = makeId();
-      const expectedCount =
+    const expectedCount =
       mode === "generate" ? parsedCount : 1;
+    const expectedParallel =
+      mode === "generate" ? parsedParallel : undefined;
     const draftTurn = createConversationTurn({
       turnId,
       title: buildConversationTitle(mode, prompt),
@@ -484,6 +492,7 @@ export function useImageSubmit({
       prompt,
       model: imageModel,
       count: expectedCount,
+      parallel: expectedParallel,
       size: imageSize,
       resolutionAccess: imageResolutionAccess,
       quality: imageQuality,
@@ -517,6 +526,7 @@ export function useImageSubmit({
         prompt,
         model: imageModel,
         count: expectedCount,
+        parallel: expectedParallel,
         size: imageSize,
         resolutionAccess: imageResolutionAccess,
         quality: imageQuality,
@@ -574,6 +584,7 @@ export function useImageSubmit({
     imageResolutionAccess,
     imageQuality,
     parsedCount,
+    parsedParallel,
     persistConversation,
     resetComposer,
     selectedConversationId,

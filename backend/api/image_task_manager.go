@@ -14,7 +14,6 @@ import (
 	"chatgpt2api/internal/imagehistory"
 )
 
-const maxImageTaskParallelUnitsPerTask = 2
 const maxImageTaskDeferredAttempts = 5
 const imageTaskRetentionAfterFinish = 30 * time.Minute
 
@@ -287,7 +286,7 @@ func (m *imageTaskManager) tryScheduleOne() bool {
 	}
 
 	maxRunning := m.maxRunningLocked()
-	if m.runningUnits >= maxRunning {
+	if maxRunning > 0 && m.runningUnits >= maxRunning {
 		updatedViews := make([]*imageTaskView, 0)
 		for _, id := range m.order {
 			task := m.tasks[id]
@@ -340,7 +339,7 @@ func (m *imageTaskManager) tryScheduleOne() bool {
 		if task.CancelRequested {
 			continue
 		}
-		if task.ActiveUnits >= maxImageTaskParallelUnitsPerTask {
+		if task.ActiveUnits >= task.parallelLimit() {
 			continue
 		}
 		unitIndex, _ := m.nextReadyQueuedUnitIndexLocked(task, now)
@@ -387,7 +386,8 @@ func (m *imageTaskManager) tryScheduleOne() bool {
 			}
 			continue
 		}
-		if m.runningUnits >= m.maxRunningLocked() || current.ActiveUnits >= maxImageTaskParallelUnitsPerTask {
+		maxRunning = m.maxRunningLocked()
+		if (maxRunning > 0 && m.runningUnits >= maxRunning) || current.ActiveUnits >= current.parallelLimit() {
 			m.mu.Unlock()
 			if lease.release != nil {
 				lease.release()
@@ -778,9 +778,15 @@ func (m *imageTaskManager) newTask(req createImageTaskRequest) (*imageTask, erro
 	if count <= 0 {
 		count = 1
 	}
-	if count > 8 {
-		count = 8
+	parallel := req.Parallel
+	if parallel < 0 {
+		parallel = 0
 	}
+	if parallel > count {
+		parallel = count
+	}
+	modelSpec := resolveImageModelSpec(req.Model, m.server.cfg.ChatGPT.Model)
+	size := strings.TrimSpace(resolveImageModelRequestSize(req.Size, modelSpec))
 	sourceImages := make([]imageTaskSourceImage, 0, len(req.SourceImages))
 	for index, source := range req.SourceImages {
 		sourceImages = append(sourceImages, imageTaskSourceImage{
@@ -805,7 +811,7 @@ func (m *imageTaskManager) newTask(req createImageTaskRequest) (*imageTask, erro
 
 	resolutionAccess := strings.ToLower(strings.TrimSpace(req.ResolutionAccess))
 	requirePaid := m.server.configuredImageMode() == "studio" &&
-		(resolutionAccess == "paid" || requiresPaidGenerateTask(req.Size))
+		(resolutionAccess == "paid" || requiresPaidGenerateTask(size))
 	requirement := imageTaskRequirement{
 		NeedPaid:        requirePaid,
 		SourceAccountID: "",
@@ -839,10 +845,11 @@ func (m *imageTaskManager) newTask(req createImageTaskRequest) (*imageTask, erro
 		Source:          firstNonEmpty(strings.TrimSpace(req.Source), "workspace"),
 		Mode:            mode,
 		Prompt:          prompt,
-		Model:           normalizeRequestedImageModel(req.Model, m.server.cfg.ChatGPT.Model),
+		Model:           modelSpec.CanonicalModel,
 		Count:           count,
+		Parallel:        parallel,
 		RetryImageIndex: req.RetryImageIndex,
-		Size:            strings.TrimSpace(req.Size),
+		Size:            size,
 		Quality:         strings.TrimSpace(req.Quality),
 		Background:      strings.TrimSpace(req.Background),
 		ResponseFormat:  firstNonEmpty(strings.TrimSpace(req.ResponseFormat), "url"),
@@ -1022,10 +1029,27 @@ func (m *imageTaskManager) taskNextRetryAtLocked(task *imageTask, now time.Time)
 
 func (m *imageTaskManager) maxRunningLocked() int {
 	maxRunning, _, _ := m.server.cfg.ImageQueueConfig()
-	if maxRunning <= 0 {
-		maxRunning = 1
-	}
 	return maxRunning
+}
+
+func (task *imageTask) parallelLimit() int {
+	if task == nil {
+		return 1
+	}
+	count := task.Count
+	if count <= 0 {
+		count = len(task.Units)
+	}
+	if count <= 0 {
+		return 1
+	}
+	if task.Parallel <= 0 {
+		return count
+	}
+	if task.Parallel > count {
+		return count
+	}
+	return task.Parallel
 }
 
 func (m *imageTaskManager) buildTaskViewLocked(task *imageTask) *imageTaskView {
@@ -1057,6 +1081,7 @@ func (m *imageTaskManager) buildTaskViewLocked(task *imageTask) *imageTaskView {
 		Status:          task.Status,
 		CreatedAt:       task.CreatedAt.Format(time.RFC3339Nano),
 		Count:           task.Count,
+		Parallel:        task.Parallel,
 		RetryImageIndex: task.RetryImageIndex,
 		QueuePosition:   queuePosition,
 		WaitingReason:   task.WaitingReason,

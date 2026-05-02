@@ -102,7 +102,7 @@ export function RuntimeSection({ config, setSection }: RuntimeSectionProps) {
       </Field>
       <Field
         label="图片并发上限"
-        hint="同时允许多少个图片生成/编辑请求进入执行。"
+        hint="同时允许多少个图片生成/编辑请求进入执行；0 表示不限制。"
       >
         <Input
           type="number"

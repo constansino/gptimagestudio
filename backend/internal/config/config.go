@@ -495,9 +495,6 @@ func (c *Config) ImageQueueConfig() (int, int, time.Duration) {
 	defer c.mu.RUnlock()
 
 	maxImageConcurrency := c.Server.MaxImageConcurrency
-	if maxImageConcurrency <= 0 {
-		maxImageConcurrency = 8
-	}
 	imageQueueLimit := c.Server.ImageQueueLimit
 	if imageQueueLimit <= 0 {
 		imageQueueLimit = 32
@@ -545,9 +542,6 @@ func (c *Config) proxyURLLocked(forSync bool) string {
 }
 
 func (c *Config) validate() error {
-	if c.Server.MaxImageConcurrency <= 0 {
-		c.Server.MaxImageConcurrency = 8
-	}
 	if c.Server.ImageQueueLimit <= 0 {
 		c.Server.ImageQueueLimit = 32
 	}

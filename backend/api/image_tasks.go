@@ -48,23 +48,24 @@ type imageTaskSourceReferencePayload struct {
 }
 
 type createImageTaskRequest struct {
-	TaskID          string                              `json:"taskId,omitempty"`
-	ConversationID  string                              `json:"conversationId"`
-	TurnID          string                              `json:"turnId"`
-	Source          string                              `json:"source,omitempty"`
-	Mode            string                              `json:"mode"`
-	Prompt          string                              `json:"prompt"`
-	Model           string                              `json:"model"`
-	Count           int                                 `json:"count"`
-	Size            string                              `json:"size,omitempty"`
-	ResolutionAccess string                             `json:"resolutionAccess,omitempty"`
-	Quality         string                              `json:"quality,omitempty"`
-	Background      string                              `json:"background,omitempty"`
-	ResponseFormat  string                              `json:"responseFormat,omitempty"`
-	RetryImageIndex *int                                `json:"retryImageIndex,omitempty"`
-	SourceImages    []imageTaskSourceImagePayload       `json:"sourceImages,omitempty"`
-	SourceReference *imageTaskSourceReferencePayload    `json:"sourceReference,omitempty"`
-	Policy          *accounts.ImageAccountRoutingPolicy `json:"policy,omitempty"`
+	TaskID           string                              `json:"taskId,omitempty"`
+	ConversationID   string                              `json:"conversationId"`
+	TurnID           string                              `json:"turnId"`
+	Source           string                              `json:"source,omitempty"`
+	Mode             string                              `json:"mode"`
+	Prompt           string                              `json:"prompt"`
+	Model            string                              `json:"model"`
+	Count            int                                 `json:"count"`
+	Parallel         int                                 `json:"parallel,omitempty"`
+	Size             string                              `json:"size,omitempty"`
+	ResolutionAccess string                              `json:"resolutionAccess,omitempty"`
+	Quality          string                              `json:"quality,omitempty"`
+	Background       string                              `json:"background,omitempty"`
+	ResponseFormat   string                              `json:"responseFormat,omitempty"`
+	RetryImageIndex  *int                                `json:"retryImageIndex,omitempty"`
+	SourceImages     []imageTaskSourceImagePayload       `json:"sourceImages,omitempty"`
+	SourceReference  *imageTaskSourceReferencePayload    `json:"sourceReference,omitempty"`
+	Policy           *accounts.ImageAccountRoutingPolicy `json:"policy,omitempty"`
 }
 
 type imageTaskBlocker struct {
@@ -94,6 +95,7 @@ type imageTaskView struct {
 	StartedAt       string                 `json:"startedAt,omitempty"`
 	FinishedAt      string                 `json:"finishedAt,omitempty"`
 	Count           int                    `json:"count"`
+	Parallel        int                    `json:"parallel,omitempty"`
 	RetryImageIndex *int                   `json:"retryImageIndex,omitempty"`
 	QueuePosition   int                    `json:"queuePosition,omitempty"`
 	WaitingReason   imageTaskWaitingReason `json:"waitingReason,omitempty"`
@@ -162,6 +164,7 @@ type imageTask struct {
 	Prompt          string
 	Model           string
 	Count           int
+	Parallel        int
 	RetryImageIndex *int
 	Size            string
 	Quality         string

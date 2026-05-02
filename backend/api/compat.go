@@ -21,6 +21,7 @@ type imageGenerationRequest struct {
 	Model          string
 	Prompt         string
 	N              int
+	Parallel       int
 	Size           string
 	Quality        string
 	Background     string
@@ -54,6 +55,7 @@ type compatChatCompletionRequest struct {
 	Messages       []compatChatMessage `json:"messages"`
 	Stream         bool                `json:"stream"`
 	N              int                 `json:"n"`
+	Parallel       int                 `json:"parallel"`
 	Size           string              `json:"size"`
 	Quality        string              `json:"quality"`
 	Background     string              `json:"background"`
@@ -71,6 +73,7 @@ type compatResponseRequest struct {
 	Tools          []compatResponseTool `json:"tools"`
 	Stream         bool                 `json:"stream"`
 	N              int                  `json:"n"`
+	Parallel       int                  `json:"parallel"`
 	Size           string               `json:"size"`
 	Quality        string               `json:"quality"`
 	Background     string               `json:"background"`
@@ -107,7 +110,8 @@ func (s *Server) executeImageGeneration(ctx context.Context, req imageGeneration
 	if req.N < 1 {
 		req.N = 1
 	}
-	size := normalizeGenerateImageSize(req.Size)
+	modelSpec := resolveImageModelSpec(req.Model, s.cfg.ChatGPT.Model)
+	size := normalizeGenerateImageSize(resolveImageModelRequestSize(req.Size, modelSpec))
 	requirePaidAccount := s.configuredImageMode() == "studio" && imaging.RequiresPaidGenerateAccount(size)
 	var allowAccount func(accounts.PublicAccount) bool
 	if requirePaidAccount {
@@ -141,8 +145,9 @@ func (s *Server) executeImageGeneration(ctx context.Context, req imageGeneration
 		Source:         "compat",
 		Mode:           "generate",
 		Prompt:         prompt,
-		Model:          normalizeRequestedImageModel(req.Model, s.cfg.ChatGPT.Model),
+		Model:          modelSpec.CanonicalModel,
 		Count:          req.N,
+		Parallel:       req.Parallel,
 		Size:           size,
 		Quality:        strings.TrimSpace(req.Quality),
 		Background:     strings.TrimSpace(req.Background),
@@ -193,15 +198,16 @@ func (s *Server) executeImageEdit(ctx context.Context, req imageEditRequest, r *
 		return nil, err
 	}
 
+	modelSpec := resolveImageModelSpec(req.Model, s.cfg.ChatGPT.Model)
 	task, err := s.imageTasks.createTask(createImageTaskRequest{
 		ConversationID: "",
 		TurnID:         fmt.Sprintf("compat-edit-%d", time.Now().UnixNano()),
 		Source:         "compat",
 		Mode:           "edit",
 		Prompt:         prompt,
-		Model:          normalizeRequestedImageModel(req.Model, s.cfg.ChatGPT.Model),
+		Model:          modelSpec.CanonicalModel,
 		Count:          1,
-		Size:           strings.TrimSpace(req.Size),
+		Size:           resolveImageModelRequestSize(req.Size, modelSpec),
 		Quality:        strings.TrimSpace(req.Quality),
 		ResponseFormat: firstNonEmpty(req.ResponseFormat, s.cfg.App.ImageFormat, "url"),
 		SourceImages:   sourceImages,
@@ -233,13 +239,14 @@ func (s *Server) executeImageSelectionEdit(ctx context.Context, req imageSelecti
 		return nil, newRequestError("source_account_id_required", "source_account_id is required for selection edit")
 	}
 
+	modelSpec := resolveImageModelSpec(req.Model, s.cfg.ChatGPT.Model)
 	task, err := s.imageTasks.createTask(createImageTaskRequest{
 		ConversationID: "",
 		TurnID:         fmt.Sprintf("compat-selection-edit-%d", time.Now().UnixNano()),
 		Source:         "compat",
 		Mode:           "edit",
 		Prompt:         prompt,
-		Model:          normalizeRequestedImageModel(req.Model, s.cfg.ChatGPT.Model),
+		Model:          modelSpec.CanonicalModel,
 		Count:          1,
 		ResponseFormat: firstNonEmpty(req.ResponseFormat, s.cfg.App.ImageFormat, "url"),
 		SourceImages: []imageTaskSourceImagePayload{
@@ -291,6 +298,7 @@ func (s *Server) handleImageChatCompletions(w http.ResponseWriter, r *http.Reque
 		Prompt:         prompt,
 		ImageURLs:      imageURLs,
 		N:              req.N,
+		Parallel:       req.Parallel,
 		Size:           req.Size,
 		Quality:        req.Quality,
 		Background:     req.Background,
@@ -330,6 +338,7 @@ func (s *Server) handleImageResponses(w http.ResponseWriter, r *http.Request) {
 		Prompt:         prompt,
 		ImageURLs:      imageURLs,
 		N:              req.N,
+		Parallel:       req.Parallel,
 		Size:           req.Size,
 		Quality:        req.Quality,
 		Background:     req.Background,
@@ -348,17 +357,26 @@ type compatRunRequest struct {
 	Prompt         string
 	ImageURLs      []string
 	N              int
+	Parallel       int
 	Size           string
 	Quality        string
 	Background     string
 }
 
 func (s *Server) runCompatImageRequest(ctx context.Context, r *http.Request, req compatRunRequest) (map[string]any, error) {
+	modelForRequest := req.RequestedModel
+	if displayModel := strings.TrimSpace(req.DisplayModel); displayModel != "" {
+		spec := resolveImageModelSpec(displayModel, "")
+		if spec.CanonicalModel == defaultImageModelV1 || spec.CanonicalModel == defaultImageModelV2 {
+			modelForRequest = displayModel
+		}
+	}
 	if len(req.ImageURLs) == 0 {
 		return s.executeImageGeneration(ctx, imageGenerationRequest{
-			Model:          req.RequestedModel,
+			Model:          modelForRequest,
 			Prompt:         req.Prompt,
 			N:              max(1, req.N),
+			Parallel:       req.Parallel,
 			Size:           req.Size,
 			Quality:        req.Quality,
 			Background:     req.Background,
@@ -375,7 +393,7 @@ func (s *Server) runCompatImageRequest(ctx context.Context, r *http.Request, req
 		images = append(images, data)
 	}
 	return s.executeImageEdit(ctx, imageEditRequest{
-		Model:          req.RequestedModel,
+		Model:          modelForRequest,
 		Prompt:         req.Prompt,
 		Images:         images,
 		Size:           req.Size,
@@ -456,12 +474,12 @@ func compatTaskPayload(task *imageTaskView) (map[string]any, error) {
 }
 
 func normalizeCompatRequestedModel(model, fallback string) string {
-	switch strings.TrimSpace(model) {
-	case "gpt-image-1", "gpt-image-2":
-		return strings.TrimSpace(model)
-	default:
-		return normalizeRequestedImageModel("", fallback)
+	spec := resolveImageModelSpec(model, fallback)
+	switch spec.CanonicalModel {
+	case defaultImageModelV1, defaultImageModelV2:
+		return spec.CanonicalModel
 	}
+	return normalizeRequestedImageModel("", fallback)
 }
 
 func hasCompatImageGenerationTool(tools []compatResponseTool) bool {

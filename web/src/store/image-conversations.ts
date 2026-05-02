@@ -51,6 +51,7 @@ export type ImageConversationTurn = {
   prompt: string;
   model: ImageModel;
   count: number;
+  parallel?: number;
   size?: string;
   resolutionAccess?: ImageResolutionAccess;
   quality?: ImageQuality;
@@ -78,6 +79,7 @@ export type ImageConversation = {
   prompt: string;
   model: ImageModel;
   count: number;
+  parallel?: number;
   size?: string;
   resolutionAccess?: ImageResolutionAccess;
   quality?: ImageQuality;
@@ -323,10 +325,19 @@ function normalizeImageMode(value: unknown): ImageMode {
   return value === "edit" || value === "upscale" ? "edit" : "generate";
 }
 
+function normalizeOptionalPositiveInteger(value: unknown): number | undefined {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return undefined;
+  }
+  return Math.floor(numeric);
+}
+
 function normalizeTurn(turn: ImageConversationTurn): ImageConversationTurn {
   return {
     ...turn,
     mode: normalizeImageMode(turn.mode),
+    parallel: normalizeOptionalPositiveInteger(turn.parallel),
     resolutionAccess: normalizeResolutionAccess(turn.resolutionAccess),
     quality: normalizeImageQuality(turn.quality),
     sourceImages: Array.isArray(turn.sourceImages) ? turn.sourceImages : [],
@@ -381,6 +392,7 @@ export function normalizeConversation(
             prompt: conversation.prompt,
             model: conversation.model,
             count: conversation.count,
+            parallel: conversation.parallel,
             size: conversation.size,
             resolutionAccess: conversation.resolutionAccess,
             quality: conversation.quality,
@@ -401,6 +413,7 @@ export function normalizeConversation(
     prompt: latestTurn.prompt,
     model: latestTurn.model,
     count: latestTurn.count,
+    parallel: latestTurn.parallel,
     size: latestTurn.size,
     resolutionAccess: latestTurn.resolutionAccess,
     quality: latestTurn.quality,

@@ -439,6 +439,7 @@ func TestSchedulePublishesQueuedBlockerUpdatesWhenConcurrencyIsFull(t *testing.T
 		paidRoute:   "responses",
 		paidModel:   "gpt-5.4-mini",
 	}, compatTestServerOptions{})
+	server.cfg.Server.MaxImageConcurrency = 1
 
 	task, err := server.imageTasks.newTask(createImageTaskRequest{
 		ConversationID: "conv-blocker-1",

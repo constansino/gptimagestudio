@@ -72,7 +72,7 @@ function defaultConfigPayload(): ConfigPayload {
       host: "",
       port: 7000,
       staticDir: "",
-      maxImageConcurrency: 8,
+      maxImageConcurrency: 0,
       imageQueueLimit: 32,
       imageQueueTimeoutSeconds: 20,
       imageTaskQueueTtlSeconds: 600,

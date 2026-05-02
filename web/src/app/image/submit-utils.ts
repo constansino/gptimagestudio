@@ -39,6 +39,7 @@ export function createConversationTurn(payload: {
   prompt: string;
   model: ImageModel;
   count: number;
+  parallel?: number;
   size?: string;
   resolutionAccess?: ImageResolutionAccess;
   quality?: ImageQuality;
@@ -57,6 +58,7 @@ export function createConversationTurn(payload: {
     prompt: payload.prompt,
     model: payload.model,
     count: payload.count,
+    parallel: payload.parallel,
     size: payload.size,
     resolutionAccess: payload.resolutionAccess,
     quality: payload.quality,

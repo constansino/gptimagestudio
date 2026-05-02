@@ -16,7 +16,7 @@ export type SyncStatus =
   | "remote_deleted";
 export type SyncSource = "cpa" | "newapi" | "sub2api";
 export type AccountSourceKind = "auth_file" | "token";
-export type ImageModel = "gpt-image-1" | "gpt-image-2";
+export type ImageModel = string;
 export type ImageQuality = "low" | "medium" | "high";
 export type ImageResolutionAccess = "free" | "paid";
 export type ImageResponseItem = {
@@ -63,6 +63,7 @@ export type ImageTaskView = {
   startedAt?: string;
   finishedAt?: string;
   count: number;
+  parallel?: number;
   retryImageIndex?: number;
   queuePosition?: number;
   waitingReason?: ImageTaskWaitingReason;
@@ -811,6 +812,7 @@ export async function generateImageWithOptions(
   options: {
     model?: ImageModel;
     count?: number;
+    parallel?: number;
     size?: string;
     quality?: ImageQuality;
   } = {},
@@ -831,6 +833,10 @@ export async function generateImageWithOptions(
       prompt,
       model,
       n: normalizedCount,
+      parallel:
+        typeof options.parallel === "number" && options.parallel > 0
+          ? Math.floor(options.parallel)
+          : undefined,
       size: size?.trim() || undefined,
       quality,
       response_format: responseFormat,
@@ -846,6 +852,7 @@ export async function createImageTask(payload: {
   prompt: string;
   model?: ImageModel;
   count?: number;
+  parallel?: number;
   retryImageIndex?: number;
   size?: string;
   resolutionAccess?: ImageResolutionAccess;
@@ -871,6 +878,10 @@ export async function createImageTask(payload: {
       prompt: payload.prompt,
       model: payload.model ?? "gpt-image-2",
       count: Math.max(1, payload.count ?? 1),
+      parallel:
+        typeof payload.parallel === "number" && payload.parallel > 0
+          ? Math.floor(payload.parallel)
+          : undefined,
       retryImageIndex:
         typeof payload.retryImageIndex === "number"
           ? payload.retryImageIndex

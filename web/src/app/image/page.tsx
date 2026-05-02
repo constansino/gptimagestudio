@@ -542,6 +542,7 @@ export default function ImagePage() {
   const [mode, setMode] = useState<ImageMode>("generate");
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageCount, setImageCount] = useState("1");
+  const [imageParallel, setImageParallel] = useState("");
   const [imageAspectRatio, setImageAspectRatio] =
     useState<ImageAspectRatio>("1:1");
   const [imageResolutionTier, setImageResolutionTier] =
@@ -728,9 +729,15 @@ export default function ImagePage() {
     return Number.isNaN(timestamp) ? null : timestamp;
   }, [activeRequestTask]);
   const parsedCount = useMemo(
-    () => Math.max(1, Math.min(8, Number(imageCount) || 1)),
+    () => Math.max(1, Math.floor(Number(imageCount) || 1)),
     [imageCount],
   );
+  const parsedParallel = useMemo(() => {
+    if (!imageParallel.trim()) {
+      return undefined;
+    }
+    return Math.max(1, Math.floor(Number(imageParallel) || 1));
+  }, [imageParallel]);
   const hasAvailablePaidAccount = useMemo(
     () =>
       hasAvailablePaidImageAccount(
@@ -1349,6 +1356,7 @@ export default function ImagePage() {
       setMode(nextMode);
       setImagePrompt("");
       setImageCount("1");
+      setImageParallel("");
       setSourceImages([]);
     },
     [mode, setSourceImages],
@@ -1379,6 +1387,7 @@ export default function ImagePage() {
     (example: (typeof inspirationExamples)[number]) => {
       setMode("generate");
       setImageCount(String(example.count));
+      setImageParallel("");
       setImagePrompt(example.prompt);
       openDraftConversation();
       setSourceImages([]);
@@ -1396,6 +1405,7 @@ export default function ImagePage() {
       maskSource,
       sourceImages,
       parsedCount,
+      parsedParallel,
       imageSize,
       imageResolutionAccess,
       imageQuality,
@@ -1559,6 +1569,7 @@ export default function ImagePage() {
         mode={mode}
         modeOptions={modeOptions}
         imageCount={imageCount}
+        imageParallel={imageParallel}
         imageAspectRatio={imageAspectRatio}
         imageAspectRatioOptions={imageAspectRatioOptions}
         imageResolutionTier={imageResolutionTier}
@@ -1577,6 +1588,7 @@ export default function ImagePage() {
         maskInputRef={maskInputRef}
         onModeChange={setMode}
         onImageCountChange={setImageCount}
+        onImageParallelChange={setImageParallel}
         onImageAspectRatioChange={(value) =>
           setImageAspectRatio(value as ImageAspectRatio)
         }

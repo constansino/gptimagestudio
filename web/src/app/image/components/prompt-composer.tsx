@@ -24,6 +24,7 @@ type PromptComposerProps = {
   mode: ImageMode;
   modeOptions: Array<{ label: string; value: ImageMode; description: string }>;
   imageCount: string;
+  imageParallel: string;
   imageAspectRatio: string;
   imageAspectRatioOptions: Array<{ label: string; value: string }>;
   imageResolutionTier: string;
@@ -42,6 +43,7 @@ type PromptComposerProps = {
   maskInputRef: RefObject<HTMLInputElement | null>;
   onModeChange: (mode: ImageMode) => void;
   onImageCountChange: (value: string) => void;
+  onImageParallelChange: (value: string) => void;
   onImageAspectRatioChange: (value: string) => void;
   onImageResolutionTierChange: (value: string) => void;
   onImageQualityChange: (value: string) => void;
@@ -58,6 +60,7 @@ export function PromptComposer({
   mode,
   modeOptions,
   imageCount,
+  imageParallel,
   imageAspectRatio,
   imageAspectRatioOptions,
   imageResolutionTier,
@@ -76,6 +79,7 @@ export function PromptComposer({
   maskInputRef,
   onModeChange,
   onImageCountChange,
+  onImageParallelChange,
   onImageAspectRatioChange,
   onImageResolutionTierChange,
   onImageQualityChange,
@@ -250,11 +254,28 @@ export function PromptComposer({
                 <Input
                   type="number"
                   min="1"
-                  max="8"
                   step="1"
                   value={imageCount}
                   onChange={(event) => onImageCountChange(event.target.value)}
                   className="h-7 w-[36px] border-0 bg-transparent px-0 text-center text-[13px] font-medium text-stone-700 shadow-none focus-visible:ring-0 sm:h-8 sm:w-[42px] sm:text-sm"
+                />
+              </div>
+            ) : null}
+
+            {mode === "generate" ? (
+              <div
+                className="flex shrink-0 items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-0.5 sm:gap-1.5 sm:px-2.5 sm:py-1"
+                title="留空时并行数量跟随张数；输入任意正整数可自定义。"
+              >
+                <span className="text-[13px] font-medium text-stone-700 sm:text-sm">并行</span>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="自动"
+                  value={imageParallel}
+                  onChange={(event) => onImageParallelChange(event.target.value)}
+                  className="h-7 w-[48px] border-0 bg-transparent px-0 text-center text-[13px] font-medium text-stone-700 shadow-none placeholder:text-stone-400 focus-visible:ring-0 sm:h-8 sm:w-[58px] sm:text-sm"
                 />
               </div>
             ) : null}
