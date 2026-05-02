@@ -9,7 +9,7 @@ import { clearStoredAuthKey } from "@/store/auth";
 import { cn } from "@/lib/utils";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
 
-const repositoryUrl = "https://github.com/peiyizhi0724/ChatGpt-Image-Studio";
+const repositoryUrl = "https://github.com/constansino/gptimagestudio";
 
 function formatVersionLabel(value: string) {
   const normalized = String(value || "").trim();

@@ -102,8 +102,8 @@ ChatGpt Image Studio 是一个单服务交付的图片工作流项目：
 ## 获取项目
 
 ```bash
-git clone https://github.com/peiyizhi0724/ChatGpt-Image-Studio.git
-cd ChatGpt-Image-Studio
+git clone https://github.com/constansino/gptimagestudio.git
+cd gptimagestudio
 ```
 
 ## 本地开发
