@@ -301,7 +301,12 @@ export function TopNav() {
     navigate("/login", { replace: true });
   };
 
-  if (pathname === "/login" || pathname === "/login.html" || pathname.startsWith("/login/")) {
+  if (
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/login.html" ||
+    pathname.startsWith("/login/")
+  ) {
     return null;
   }
 

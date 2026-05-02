@@ -2,13 +2,17 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleAlert, LoaderCircle, LockKeyhole, Sparkles } from "lucide-react";
+import { CircleAlert, LoaderCircle, LockKeyhole, Sparkles, UserPlus, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { login } from "@/lib/api";
 import { setStoredAuthKey } from "@/store/auth";
+
+const newAPIBaseURL = "https://fps.de5.net";
+const registerURL = `${newAPIBaseURL}/register`;
+const rechargeURL = `${newAPIBaseURL}/topup`;
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -108,7 +112,7 @@ export default function LoginPage() {
                     void handleLogin();
                   }
                 }}
-                placeholder="NewAPI 用户名"
+                placeholder="fps.de5.net 用户名"
                 className="h-13 rounded-2xl border-stone-200 bg-stone-50 px-4 shadow-none focus-visible:ring-1"
               />
             </div>
@@ -127,7 +131,7 @@ export default function LoginPage() {
                     void handleLogin();
                   }
                 }}
-                placeholder="NewAPI 密码"
+                placeholder="fps.de5.net 密码"
                 className="h-13 rounded-2xl border-stone-200 bg-stone-50 px-4 shadow-none focus-visible:ring-1"
               />
             </div>
@@ -143,6 +147,27 @@ export default function LoginPage() {
 
             <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4 text-xs leading-6 text-stone-500">
               普通用户成功出图后按张扣除 NewAPI 余额；失败、取消或模型拒绝不会扣费。
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <a
+                href={registerURL}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-medium text-stone-700 transition hover:bg-stone-50 hover:text-stone-950"
+              >
+                <UserPlus className="size-4" />
+                注册 NewAPI
+              </a>
+              <a
+                href={rechargeURL}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-medium text-stone-700 transition hover:bg-stone-50 hover:text-stone-950"
+              >
+                <WalletCards className="size-4" />
+                充值余额
+              </a>
             </div>
 
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950">
