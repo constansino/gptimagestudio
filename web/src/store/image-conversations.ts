@@ -445,9 +445,8 @@ async function getImageConversationStorageMode() {
     if (cachedImageConversationStorageMode) {
       return cachedImageConversationStorageMode;
     }
-    throw error instanceof Error
-      ? error
-      : new Error("无法确定会话记录存储模式");
+    setCachedImageConversationStorageMode("browser");
+    return "browser";
   }
 }
 

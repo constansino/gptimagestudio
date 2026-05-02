@@ -221,6 +221,13 @@ func (c *Client) GetSelf(ctx context.Context) (*User, error) {
 	return &payload.Data, nil
 }
 
+func (c *Client) LoginWithPassword(ctx context.Context, username, password string) (*User, error) {
+	if c == nil || c.baseURL == "" {
+		return nil, fmt.Errorf("newapi base_url is not configured")
+	}
+	return c.loginWithPassword(ctx, username, password)
+}
+
 func (c *Client) GenerateAccessToken(ctx context.Context) (string, int, error) {
 	if !c.Configured() {
 		return "", 0, fmt.Errorf("newapi is not configured")
@@ -304,52 +311,67 @@ func (c *Client) ensureSession(ctx context.Context) error {
 		return fmt.Errorf("newapi requires access_token+user_id, session_cookie+user_id, or username+password")
 	}
 
-	body, err := json.Marshal(map[string]string{
-		"username": c.username,
-		"password": c.password,
-	})
+	user, err := c.loginWithPassword(ctx, c.username, c.password)
 	if err != nil {
 		return err
 	}
+	if user.ID <= 0 {
+		return fmt.Errorf("newapi login failed: missing user id")
+	}
+	c.userID = user.ID
+	return nil
+}
+
+func (c *Client) loginWithPassword(ctx context.Context, username, password string) (*User, error) {
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+	if username == "" || password == "" {
+		return nil, fmt.Errorf("newapi username and password are required")
+	}
+
+	body, err := json.Marshal(map[string]string{
+		"username": username,
+		"password": password,
+	})
+	if err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/user/login", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("newapi login failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, fmt.Errorf("newapi login failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
 	var payload struct {
 		Success bool   `json:"success"`
 		Message string `json:"message"`
-		Data    struct {
-			ID int `json:"id"`
-		} `json:"data"`
+		Data    User   `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return err
+		return nil, err
 	}
 	if !payload.Success {
-		return fmt.Errorf("newapi login failed: %s", strings.TrimSpace(payload.Message))
+		return nil, fmt.Errorf("newapi login failed: %s", strings.TrimSpace(payload.Message))
 	}
 	if payload.Data.ID <= 0 {
-		return fmt.Errorf("newapi login failed: missing user id")
+		return nil, fmt.Errorf("newapi login failed: missing user id")
 	}
-	c.userID = payload.Data.ID
-	return nil
+	return &payload.Data, nil
 }
 
 func (c *Client) newBody(value any) (io.Reader, error) {

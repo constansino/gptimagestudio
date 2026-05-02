@@ -221,6 +221,48 @@ export function RuntimeSection({ config, setSection }: RuntimeSectionProps) {
           className="h-11 rounded-2xl border-stone-200 bg-white shadow-none"
         />
       </Field>
+      <ToggleField
+        label="普通用户 NewAPI 扣费"
+        hint="开启后，NewAPI 普通用户成功出图才会从 NewAPI 余额扣费；失败任务不扣费。"
+        checked={config.billing.enabled}
+        onCheckedChange={(checked) => setSection("billing", { ...config.billing, enabled: checked })}
+      />
+      <Field
+        label="每张图片价格（USD）"
+        hint="普通用户成功生成一张图片扣费一次。默认 0.1；NewAPI 当前按 QuotaPerUnit 换算余额。"
+        tooltip={
+          <TooltipDetails
+            items={[
+              {
+                title: "扣费时机",
+                body: <>只有子图最终成功返回时才扣费；模型拒绝、上游报错、任务取消和超时都不会扣费。</>,
+              },
+              {
+                title: "并发任务",
+                body: <>并发 4 张就是最多扣 4 次；如果只成功 3 张，就只扣 3 张。</>,
+              },
+              {
+                title: "余额来源",
+                body: <>余额直接读取 NewAPI 用户表，扣费后也会写入 NewAPI 日志和用量统计。</>,
+              },
+            ]}
+          />
+        }
+      >
+        <Input
+          type="number"
+          step="0.01"
+          min="0"
+          value={String(config.billing.imagePriceUsd)}
+          onChange={(event) =>
+            setSection("billing", {
+              ...config.billing,
+              imagePriceUsd: Number(event.target.value || 0),
+            })
+          }
+          className="h-11 rounded-2xl border-stone-200 bg-white shadow-none"
+        />
+      </Field>
       <Field
         label="图片返回格式"
         hint="当前项目自身图片接口默认返回格式。"

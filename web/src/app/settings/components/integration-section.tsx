@@ -281,6 +281,33 @@ export function IntegrationSection({ config, setSection }: IntegrationSectionPro
             className="h-11 rounded-2xl border-stone-200 bg-white shadow-none"
           />
         </Field>
+
+        <Field
+          label="NewAPI PostgreSQL DSN（扣费）"
+          hint="普通用户成功出图后扣 NewAPI 余额时使用。只给 Studio 后端连接数据库，不会开放给普通用户。"
+          fullWidth
+          tooltip={
+            <TooltipDetails
+              items={[
+                {
+                  title: "用途",
+                  body: <>登录校验走 NewAPI HTTP；余额扣费走这里的 PostgreSQL 连接，保证成功出图后能原子扣减余额。</>,
+                },
+                {
+                  title: "示例",
+                  body: <>例如 <code>postgres://user:pass@new-api-postgres:5432/new-api?sslmode=disable</code>。</>,
+                },
+              ]}
+            />
+          }
+        >
+          <Input
+            type="password"
+            value={config.billing.newapiSqlDsn}
+            onChange={(event) => setSection("billing", { ...config.billing, newapiSqlDsn: event.target.value })}
+            className="h-11 rounded-2xl border-stone-200 bg-white shadow-none"
+          />
+        </Field>
       </ConfigSection>
 
       <ConfigSection

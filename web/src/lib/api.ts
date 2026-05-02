@@ -359,6 +359,11 @@ export type ConfigPayload = {
     sessionCookie: string;
     requestTimeout: number;
   };
+  billing: {
+    enabled: boolean;
+    imagePriceUsd: number;
+    newapiSqlDsn: string;
+  };
   sub2api: {
     baseUrl: string;
     email: string;
@@ -413,6 +418,28 @@ export type VersionInfo = {
   version: string;
   commit?: string;
   buildTime?: string;
+};
+
+export type AuthUser = {
+  id: number;
+  username: string;
+  displayName?: string;
+  email?: string;
+  role: number;
+  isAdmin: boolean;
+  source: string;
+  expiresAt?: number;
+};
+
+export type AuthSessionResponse = {
+  ok: boolean;
+  token?: string;
+  user: AuthUser;
+  version?: string;
+  billing?: {
+    enabled: boolean;
+    imagePriceUsd: number;
+  };
 };
 
 export type StartupCheckItem = {
@@ -586,14 +613,19 @@ export type Sub2APIGroupsResult = {
   groups: Sub2APIGroupOption[];
 };
 
-export async function login(authKey: string) {
-  const normalizedAuthKey = String(authKey || "").trim();
-  return httpRequest<{ ok: boolean }>("/auth/login", {
+export async function login(username: string, password: string) {
+  return httpRequest<AuthSessionResponse>("/auth/login", {
     method: "POST",
-    body: {},
-    headers: {
-      Authorization: `Bearer ${normalizedAuthKey}`,
+    body: {
+      username: String(username || "").trim(),
+      password: String(password || ""),
     },
+    redirectOnUnauthorized: false,
+  });
+}
+
+export async function fetchCurrentSession() {
+  return httpRequest<AuthSessionResponse>("/auth/me", {
     redirectOnUnauthorized: false,
   });
 }

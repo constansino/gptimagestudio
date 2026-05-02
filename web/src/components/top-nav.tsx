@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Activity, ChevronLeft, ImageIcon, LogOut, PanelLeftClose, PanelLeftOpen, Settings2, Shield } from "lucide-react";
 
-import { fetchVersionInfo } from "@/lib/api";
+import { fetchCurrentSession, fetchVersionInfo } from "@/lib/api";
 import { clearStoredAuthKey } from "@/store/auth";
 import { cn } from "@/lib/utils";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
@@ -32,6 +32,10 @@ const navItems = [
   { href: "/requests", matchPrefix: "/requests", label: "调用请求", description: "查看官方与 CPA 请求方向", icon: Activity },
 ] as const;
 
+function visibleNavItems(isAdmin: boolean) {
+  return isAdmin ? navItems : navItems.filter((item) => item.href.startsWith("/image"));
+}
+
 function BrandCopy({ subtitle }: { subtitle: string }) {
   return (
     <span className="min-w-0">
@@ -56,11 +60,13 @@ type DesktopTopNavProps = {
   pathname: string;
   defaultCollapsed: boolean;
   versionLabel: string;
+  isAdmin: boolean;
   onLogout: () => Promise<void>;
 };
 
-function DesktopTopNav({ pathname, defaultCollapsed, versionLabel, onLogout }: DesktopTopNavProps) {
+function DesktopTopNav({ pathname, defaultCollapsed, versionLabel, isAdmin, onLogout }: DesktopTopNavProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const items = visibleNavItems(isAdmin);
 
   return (
     <aside className={cn("hidden shrink-0 transition-[width] duration-200 lg:flex", collapsed ? "w-[92px]" : "w-[228px]")}>
@@ -95,7 +101,7 @@ function DesktopTopNav({ pathname, defaultCollapsed, versionLabel, onLogout }: D
         </div>
 
         <nav className="mt-4 space-y-1">
-          {navItems.map((item) => {
+          {items.map((item) => {
             const active = isNavItemActive(pathname, item.href, item.matchPrefix);
             const Icon = item.icon;
             return (
@@ -171,6 +177,7 @@ export function TopNav() {
   const isImageRoute = pathname === "/image" || pathname?.startsWith("/image/");
   const isMobileWorkspaceRoute = pathname === "/image/workspace";
   const [versionLabel, setVersionLabel] = useState("读取中");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [mobileNavExpanded, setMobileNavExpanded] = useState(false);
   const [mobileHeaderHeight, setMobileHeaderHeight] = useState(0);
   const [mobileWorkspaceHeaderHeight, setMobileWorkspaceHeaderHeight] = useState(0);
@@ -202,6 +209,26 @@ export function TopNav() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSession = async () => {
+      try {
+        const payload = await fetchCurrentSession();
+        if (!cancelled) {
+          setIsAdmin(Boolean(payload.user?.isAdmin));
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAdmin(false);
+        }
+      }
+    };
+    void loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   useEffect(() => {
     setMobileNavExpanded(false);
@@ -308,7 +335,7 @@ export function TopNav() {
                 to="/image/history"
                 className="hidden rounded-2xl border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-600 shadow-sm dark:border-[var(--studio-border)] dark:bg-[var(--studio-panel-soft)] dark:text-[var(--studio-text)] sm:inline-flex"
               >
-                {navItems.find((item) => isNavItemActive(pathname, item.href, item.matchPrefix))?.label ?? "导航"}
+                {visibleNavItems(isAdmin).find((item) => isNavItemActive(pathname, item.href, item.matchPrefix))?.label ?? "导航"}
               </Link>
               <button
                 type="button"
@@ -323,7 +350,7 @@ export function TopNav() {
           {mobileNavExpanded ? (
             <nav className="hide-scrollbar mt-3 -mx-1 overflow-x-auto px-1">
               <div className="inline-flex min-w-full gap-2 rounded-[20px] bg-white/55 p-1">
-                {navItems.map((item) => {
+                {visibleNavItems(isAdmin).map((item) => {
                   const active = isNavItemActive(pathname, item.href, item.matchPrefix);
                   const Icon = item.icon;
                   return (
@@ -414,7 +441,7 @@ export function TopNav() {
             </div>
             <nav className="hide-scrollbar mt-3 -mx-1 overflow-x-auto px-1">
               <div className="inline-flex min-w-full gap-2 rounded-[20px] bg-white/55 p-1">
-                {navItems.map((item) => {
+                {visibleNavItems(isAdmin).map((item) => {
                   const active = isNavItemActive(pathname, item.href, item.matchPrefix);
                   const Icon = item.icon;
                   return (
@@ -443,6 +470,7 @@ export function TopNav() {
         pathname={pathname}
         defaultCollapsed={isImageRoute}
         versionLabel={versionLabel}
+        isAdmin={isAdmin}
         onLogout={handleLogout}
       />
     </>

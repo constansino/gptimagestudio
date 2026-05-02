@@ -51,8 +51,9 @@ func newImageTaskManager(server *Server) *imageTaskManager {
 	}
 }
 
-func (m *imageTaskManager) createTask(req createImageTaskRequest) (*imageTaskView, error) {
-	task, err := m.newTask(req)
+func (m *imageTaskManager) createTask(req createImageTaskRequest, sessions ...*authSession) (*imageTaskView, error) {
+	viewer := firstAuthSession(sessions...)
+	task, err := m.newTask(req, viewer)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +94,8 @@ func (m *imageTaskManager) createTask(req createImageTaskRequest) (*imageTaskVie
 	return view, nil
 }
 
-func (m *imageTaskManager) listTasks() ([]imageTaskView, *imageTaskSnapshot) {
+func (m *imageTaskManager) listTasks(sessions ...*authSession) ([]imageTaskView, *imageTaskSnapshot) {
+	viewer := firstAuthSession(sessions...)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -103,29 +105,34 @@ func (m *imageTaskManager) listTasks() ([]imageTaskView, *imageTaskSnapshot) {
 		if task == nil {
 			continue
 		}
+		if !m.viewerCanAccessTaskLocked(viewer, task) {
+			continue
+		}
 		items = append(items, *m.buildTaskViewLocked(task))
 	}
-	snapshot := m.snapshotLocked()
+	snapshot := m.snapshotLockedFor(viewer)
 	return items, snapshot
 }
 
-func (m *imageTaskManager) getTask(id string) (*imageTaskView, *imageTaskSnapshot, error) {
+func (m *imageTaskManager) getTask(id string, sessions ...*authSession) (*imageTaskView, *imageTaskSnapshot, error) {
+	viewer := firstAuthSession(sessions...)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	task := m.tasks[strings.TrimSpace(id)]
-	if task == nil {
+	if task == nil || !m.viewerCanAccessTaskLocked(viewer, task) {
 		return nil, nil, fmt.Errorf("task not found")
 	}
-	return m.buildTaskViewLocked(task), m.snapshotLocked(), nil
+	return m.buildTaskViewLocked(task), m.snapshotLockedFor(viewer), nil
 }
 
-func (m *imageTaskManager) taskLogs(id string) ([]imageTaskLogEntry, error) {
+func (m *imageTaskManager) taskLogs(id string, sessions ...*authSession) ([]imageTaskLogEntry, error) {
+	viewer := firstAuthSession(sessions...)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	task := m.tasks[strings.TrimSpace(id)]
-	if task == nil {
+	if task == nil || !m.viewerCanAccessTaskLocked(viewer, task) {
 		return nil, fmt.Errorf("task not found")
 	}
 	return append([]imageTaskLogEntry(nil), task.Logs...), nil
@@ -164,11 +171,12 @@ func (m *imageTaskManager) waitForTask(ctx context.Context, taskID string) (*ima
 	}
 }
 
-func (m *imageTaskManager) cancelTask(id string) (*imageTaskView, error) {
+func (m *imageTaskManager) cancelTask(id string, sessions ...*authSession) (*imageTaskView, error) {
+	viewer := firstAuthSession(sessions...)
 	taskID := strings.TrimSpace(id)
 	m.mu.Lock()
 	task := m.tasks[taskID]
-	if task == nil {
+	if task == nil || !m.viewerCanAccessTaskLocked(viewer, task) {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("task not found")
 	}
@@ -532,13 +540,22 @@ func (m *imageTaskManager) runUnit(taskID string, unitIndex int, lease *imageTas
 		task.Images[unitIndex].Error = err.Error()
 		appendImageTaskLog(task, "error", "unit.failed", unitIndex, fmt.Sprintf("子图 #%d 失败：%s", unitIndex+1, err.Error()))
 	} else if len(images) > 0 {
-		task.Units[unitIndex].FinishedAt = now
-		task.Units[unitIndex].Status = imageTaskStatusSucceeded
-		image := images[0]
-		image.ID = task.Images[unitIndex].ID
-		image.Status = "success"
-		task.Images[unitIndex] = image
-		appendImageTaskLog(task, "info", "unit.succeeded", unitIndex, fmt.Sprintf("子图 #%d 生成成功，返回 %d 张图片", unitIndex+1, len(images)))
+		if chargeErr := m.server.chargeSuccessfulImages(context.Background(), task.billingSession(), task.Model, task.Prompt, 1, fmt.Sprintf("%s-%d", task.ID, unitIndex), nil); chargeErr != nil {
+			task.Units[unitIndex].FinishedAt = now
+			task.Units[unitIndex].Status = imageTaskStatusFailed
+			task.Units[unitIndex].Error = chargeErr.Error()
+			task.Images[unitIndex].Status = "error"
+			task.Images[unitIndex].Error = chargeErr.Error()
+			appendImageTaskLog(task, "error", "unit.billing_failed", unitIndex, fmt.Sprintf("子图 #%d 已生成但扣费失败，结果未返回：%s", unitIndex+1, chargeErr.Error()))
+		} else {
+			task.Units[unitIndex].FinishedAt = now
+			task.Units[unitIndex].Status = imageTaskStatusSucceeded
+			image := images[0]
+			image.ID = task.Images[unitIndex].ID
+			image.Status = "success"
+			task.Images[unitIndex] = image
+			appendImageTaskLog(task, "info", "unit.succeeded", unitIndex, fmt.Sprintf("子图 #%d 生成成功，返回 %d 张图片", unitIndex+1, len(images)))
+		}
 	}
 
 	queuedUnits := 0
@@ -814,7 +831,8 @@ func (m *imageTaskManager) busyBlocker(task *imageTask) imageTaskBlocker {
 	return imageTaskBlocker{Code: string(imageTaskWaitingReasonCompatibleAccountBusy), Detail: "等待兼容图片账号空闲"}
 }
 
-func (m *imageTaskManager) newTask(req createImageTaskRequest) (*imageTask, error) {
+func (m *imageTaskManager) newTask(req createImageTaskRequest, sessions ...*authSession) (*imageTask, error) {
+	session := firstAuthSession(sessions...)
 	id := firstNonEmpty(strings.TrimSpace(req.TaskID), strings.TrimSpace(req.TurnID))
 	if id == "" {
 		id = fmt.Sprintf("task-%d", time.Now().UnixNano())
@@ -892,6 +910,9 @@ func (m *imageTaskManager) newTask(req createImageTaskRequest) (*imageTask, erro
 		ID:              id,
 		ConversationID:  strings.TrimSpace(req.ConversationID),
 		TurnID:          strings.TrimSpace(req.TurnID),
+		UserID:          sessionUserID(session),
+		Username:        sessionUsername(session),
+		UserIsAdmin:     session == nil || session.Admin,
 		Source:          firstNonEmpty(strings.TrimSpace(req.Source), "workspace"),
 		Mode:            mode,
 		Prompt:          prompt,
@@ -1154,6 +1175,19 @@ func (task *imageTask) parallelLimit() int {
 	return task.Parallel
 }
 
+func (task *imageTask) billingSession() *authSession {
+	if task == nil || task.UserIsAdmin || task.UserID <= 0 {
+		return nil
+	}
+	return &authSession{
+		UserID:   task.UserID,
+		Username: strings.TrimSpace(task.Username),
+		Role:     1,
+		Admin:    false,
+		Source:   "newapi",
+	}
+}
+
 func (m *imageTaskManager) buildTaskViewLocked(task *imageTask) *imageTaskView {
 	queuePosition := 0
 	if task.Status == imageTaskStatusQueued {
@@ -1179,6 +1213,8 @@ func (m *imageTaskManager) buildTaskViewLocked(task *imageTask) *imageTaskView {
 		ID:              task.ID,
 		ConversationID:  task.ConversationID,
 		TurnID:          task.TurnID,
+		UserID:          task.UserID,
+		Username:        task.Username,
 		Mode:            task.Mode,
 		Status:          task.Status,
 		CreatedAt:       task.CreatedAt.Format(time.RFC3339Nano),
@@ -1203,13 +1239,21 @@ func (m *imageTaskManager) buildTaskViewLocked(task *imageTask) *imageTaskView {
 }
 
 func (m *imageTaskManager) snapshotLocked() *imageTaskSnapshot {
+	return m.snapshotLockedFor(nil)
+}
+
+func (m *imageTaskManager) snapshotLockedFor(viewer *authSession) *imageTaskSnapshot {
 	queued := 0
+	runningVisible := 0
 	total := 0
 	activeSources := imageTaskSourceSnapshot{}
 	finalStatuses := imageTaskFinalStatusSnapshot{}
 	for _, id := range m.order {
 		task := m.tasks[id]
 		if task == nil {
+			continue
+		}
+		if !m.viewerCanAccessTaskLocked(viewer, task) {
 			continue
 		}
 		total++
@@ -1224,6 +1268,7 @@ func (m *imageTaskManager) snapshotLocked() *imageTaskSnapshot {
 			}
 		}
 		queued += queuedUnitsForTask
+		runningVisible += runningUnitsForTask
 		addImageTaskSourceCountN(
 			&activeSources,
 			task.Source,
@@ -1241,7 +1286,7 @@ func (m *imageTaskManager) snapshotLocked() *imageTaskSnapshot {
 		}
 	}
 	return &imageTaskSnapshot{
-		Running:          m.runningUnits,
+		Running:          runningVisible,
 		MaxRunning:       m.maxRunningLocked(),
 		Queued:           queued,
 		Total:            total,
@@ -1249,6 +1294,32 @@ func (m *imageTaskManager) snapshotLocked() *imageTaskSnapshot {
 		FinalStatuses:    finalStatuses,
 		RetentionSeconds: int(imageTaskRetentionAfterFinish / time.Second),
 	}
+}
+
+func (m *imageTaskManager) snapshotFor(viewer *authSession) *imageTaskSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.snapshotLockedFor(viewer)
+}
+
+func (m *imageTaskManager) viewerCanAccessTaskLockedForStream(viewer *authSession, taskID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	task := m.tasks[strings.TrimSpace(taskID)]
+	return m.viewerCanAccessTaskLocked(viewer, task)
+}
+
+func (m *imageTaskManager) viewerCanAccessTaskLocked(viewer *authSession, task *imageTask) bool {
+	if task == nil {
+		return false
+	}
+	if viewer == nil || viewer.Admin {
+		return true
+	}
+	if task.UserID <= 0 {
+		return false
+	}
+	return task.UserID == viewer.UserID
 }
 
 func (m *imageTaskManager) subscriberChannelsLocked() []chan imageTaskEvent {
@@ -1378,6 +1449,29 @@ func sameImageTaskBlockers(left, right []imageTaskBlocker) bool {
 		}
 	}
 	return true
+}
+
+func firstAuthSession(sessions ...*authSession) *authSession {
+	for _, session := range sessions {
+		if session != nil {
+			return session
+		}
+	}
+	return nil
+}
+
+func sessionUserID(session *authSession) int {
+	if session == nil {
+		return 0
+	}
+	return session.UserID
+}
+
+func sessionUsername(session *authSession) string {
+	if session == nil {
+		return ""
+	}
+	return strings.TrimSpace(session.Username)
 }
 
 func requiresPaidGenerateTask(size string) bool {

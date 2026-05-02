@@ -93,6 +93,11 @@ type configPayload struct {
 		SessionCookie  string `json:"sessionCookie"`
 		RequestTimeout int    `json:"requestTimeout"`
 	} `json:"newapi"`
+	Billing struct {
+		Enabled       bool    `json:"enabled"`
+		ImagePriceUSD float64 `json:"imagePriceUsd"`
+		NewAPISQLDSN  string  `json:"newapiSqlDsn"`
+	} `json:"billing"`
 	Sub2API struct {
 		BaseURL        string `json:"baseUrl"`
 		Email          string `json:"email"`
@@ -218,6 +223,11 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 			"session_cookie":  payload.NewAPI.SessionCookie,
 			"request_timeout": payload.NewAPI.RequestTimeout,
 		},
+		"billing": {
+			"enabled":         payload.Billing.Enabled,
+			"image_price_usd": payload.Billing.ImagePriceUSD,
+			"newapi_sql_dsn":  payload.Billing.NewAPISQLDSN,
+		},
 		"sub2api": {
 			"base_url":        payload.Sub2API.BaseURL,
 			"email":           payload.Sub2API.Email,
@@ -335,6 +345,10 @@ func (s *Server) buildConfigPayloadFromConfig(cfg *config.Config) configPayload 
 	payload.NewAPI.UserID = cfg.NewAPI.UserID
 	payload.NewAPI.SessionCookie = cfg.NewAPI.SessionCookie
 	payload.NewAPI.RequestTimeout = cfg.NewAPI.RequestTimeout
+
+	payload.Billing.Enabled = cfg.Billing.Enabled
+	payload.Billing.ImagePriceUSD = cfg.Billing.ImagePriceUSD
+	payload.Billing.NewAPISQLDSN = cfg.Billing.NewAPISQLDSN
 
 	payload.Sub2API.BaseURL = cfg.Sub2API.BaseURL
 	payload.Sub2API.Email = cfg.Sub2API.Email

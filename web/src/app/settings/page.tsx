@@ -141,6 +141,11 @@ function defaultConfigPayload(): ConfigPayload {
       sessionCookie: "",
       requestTimeout: 20,
     },
+    billing: {
+      enabled: false,
+      imagePriceUsd: 0.1,
+      newapiSqlDsn: "",
+    },
     sub2api: {
       baseUrl: "",
       email: "",
@@ -200,6 +205,7 @@ function normalizeConfigPayload(
     proxy: { ...defaults.proxy, ...next.proxy },
     cpa: { ...defaults.cpa, ...next.cpa },
     newapi: { ...defaults.newapi, ...next.newapi },
+    billing: { ...defaults.billing, ...next.billing },
     sub2api: { ...defaults.sub2api, ...next.sub2api },
     log: { ...defaults.log, ...next.log },
     paths: { ...defaults.paths, ...next.paths },

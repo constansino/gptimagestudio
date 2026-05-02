@@ -363,6 +363,7 @@ func (s *Server) maskSensitiveConfig(payload configPayload) configPayload {
 	payload.NewAPI.Password = maskSecret(payload.NewAPI.Password)
 	payload.NewAPI.AccessToken = maskSecret(payload.NewAPI.AccessToken)
 	payload.NewAPI.SessionCookie = maskSecret(payload.NewAPI.SessionCookie)
+	payload.Billing.NewAPISQLDSN = maskURLAuth(payload.Billing.NewAPISQLDSN)
 	payload.Sub2API.Password = maskSecret(payload.Sub2API.Password)
 	payload.Sub2API.APIKey = maskSecret(payload.Sub2API.APIKey)
 	return payload

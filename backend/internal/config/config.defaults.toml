@@ -107,6 +107,11 @@ user_id = 0
 session_cookie = ""
 request_timeout = 20
 
+[billing]
+enabled = false
+image_price_usd = 0.1
+newapi_sql_dsn = ""
+
 [sub2api]
 base_url = ""
 email = ""

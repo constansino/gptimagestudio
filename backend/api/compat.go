@@ -138,6 +138,9 @@ func (s *Server) executeImageGeneration(ctx context.Context, req imageGeneration
 		}
 		return nil, newRequestError("no_available_image_accounts", "当前没有可用的图片账号")
 	}
+	if err := s.ensureImageBillingBalance(ctx, authSessionFromContext(r.Context()), max(1, req.N)); err != nil {
+		return nil, err
+	}
 
 	task, err := s.imageTasks.createTask(createImageTaskRequest{
 		ConversationID: "",
@@ -153,7 +156,7 @@ func (s *Server) executeImageGeneration(ctx context.Context, req imageGeneration
 		Background:     strings.TrimSpace(req.Background),
 		ResponseFormat: firstNonEmpty(req.ResponseFormat, s.cfg.App.ImageFormat, "url"),
 		Policy:         policy,
-	})
+	}, authSessionFromContext(r.Context()))
 	if err != nil {
 		return nil, err
 	}
@@ -199,6 +202,9 @@ func (s *Server) executeImageEdit(ctx context.Context, req imageEditRequest, r *
 	}
 
 	modelSpec := resolveImageModelSpec(req.Model, s.cfg.ChatGPT.Model)
+	if err := s.ensureImageBillingBalance(ctx, authSessionFromContext(r.Context()), 1); err != nil {
+		return nil, err
+	}
 	task, err := s.imageTasks.createTask(createImageTaskRequest{
 		ConversationID: "",
 		TurnID:         fmt.Sprintf("compat-edit-%d", time.Now().UnixNano()),
@@ -212,7 +218,7 @@ func (s *Server) executeImageEdit(ctx context.Context, req imageEditRequest, r *
 		ResponseFormat: firstNonEmpty(req.ResponseFormat, s.cfg.App.ImageFormat, "url"),
 		SourceImages:   sourceImages,
 		Policy:         policy,
-	})
+	}, authSessionFromContext(r.Context()))
 	if err != nil {
 		return nil, err
 	}
@@ -240,6 +246,9 @@ func (s *Server) executeImageSelectionEdit(ctx context.Context, req imageSelecti
 	}
 
 	modelSpec := resolveImageModelSpec(req.Model, s.cfg.ChatGPT.Model)
+	if err := s.ensureImageBillingBalance(ctx, authSessionFromContext(r.Context()), 1); err != nil {
+		return nil, err
+	}
 	task, err := s.imageTasks.createTask(createImageTaskRequest{
 		ConversationID: "",
 		TurnID:         fmt.Sprintf("compat-selection-edit-%d", time.Now().UnixNano()),
@@ -264,7 +273,7 @@ func (s *Server) executeImageSelectionEdit(ctx context.Context, req imageSelecti
 			ParentMessageID: strings.TrimSpace(req.ParentMessageID),
 			SourceAccountID: sourceAccountID,
 		},
-	})
+	}, authSessionFromContext(r.Context()))
 	if err != nil {
 		return nil, err
 	}

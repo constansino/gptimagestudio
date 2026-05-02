@@ -125,6 +125,12 @@ type NewAPIConfig struct {
 	RequestTimeout int    `toml:"request_timeout"`
 }
 
+type BillingConfig struct {
+	Enabled       bool    `toml:"enabled"`
+	ImagePriceUSD float64 `toml:"image_price_usd"`
+	NewAPISQLDSN  string  `toml:"newapi_sql_dsn"`
+}
+
 type Sub2APIConfig struct {
 	BaseURL        string `toml:"base_url"`
 	Email          string `toml:"email"`
@@ -150,6 +156,7 @@ type Config struct {
 	Proxy    ProxyConfig    `toml:"proxy"`
 	CPA      CPAConfig      `toml:"cpa"`
 	NewAPI   NewAPIConfig   `toml:"newapi"`
+	Billing  BillingConfig  `toml:"billing"`
 	Sub2API  Sub2APIConfig  `toml:"sub2api"`
 }
 
@@ -440,6 +447,7 @@ func (c *Config) copyFrom(other *Config) {
 	c.Proxy = other.Proxy
 	c.CPA = other.CPA
 	c.NewAPI = other.NewAPI
+	c.Billing = other.Billing
 	c.Sub2API = other.Sub2API
 	c.paths = other.paths
 }
@@ -577,6 +585,9 @@ func (c *Config) validate() error {
 	}
 	c.ChatGPT.FreeImageModel = normalizeConfiguredImageRouteModel(c.ChatGPT.FreeImageRoute, c.ChatGPT.FreeImageModel, "auto", true)
 	c.ChatGPT.PaidImageModel = normalizeConfiguredImageRouteModel(c.ChatGPT.PaidImageRoute, c.ChatGPT.PaidImageModel, "gpt-5.4-mini", false)
+	if c.Billing.ImagePriceUSD < 0 {
+		c.Billing.ImagePriceUSD = 0
+	}
 
 	c.CPA.RouteStrategy = normalizeCPAImageRouteStrategy(c.CPA.RouteStrategy)
 	c.Storage.Backend = normalizeStorageBackend(c.Storage.Backend)

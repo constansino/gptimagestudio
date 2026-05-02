@@ -97,6 +97,8 @@ type imageTaskView struct {
 	ID              string                 `json:"id"`
 	ConversationID  string                 `json:"conversationId"`
 	TurnID          string                 `json:"turnId"`
+	UserID          int                    `json:"userId,omitempty"`
+	Username        string                 `json:"username,omitempty"`
 	Mode            string                 `json:"mode"`
 	Status          imageTaskStatus        `json:"status"`
 	CreatedAt       string                 `json:"createdAt"`
@@ -168,6 +170,9 @@ type imageTask struct {
 	ID              string
 	ConversationID  string
 	TurnID          string
+	UserID          int
+	Username        string
+	UserIsAdmin     bool
 	Source          string
 	Mode            string
 	Prompt          string
