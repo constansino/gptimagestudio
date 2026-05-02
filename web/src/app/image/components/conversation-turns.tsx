@@ -405,7 +405,7 @@ export const ConversationTurns = memo(function ConversationTurns({
                           </div>
                         ) : image.status === "error" ? (
                           <div className="flex min-h-[320px] flex-col">
-                            <div className="flex flex-1 items-center justify-center whitespace-pre-line bg-rose-50 px-6 py-8 text-center text-sm leading-7 text-rose-600">
+                            <div className="flex max-h-[320px] min-h-[260px] flex-1 items-start justify-start overflow-auto whitespace-pre-wrap break-words bg-rose-50 px-5 py-6 text-left text-sm leading-7 text-rose-600 [overflow-wrap:anywhere]">
                               {formatImageErrorMessage(
                                 image.error || "处理失败",
                               )}

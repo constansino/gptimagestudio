@@ -127,6 +127,29 @@ export function countFailures(images: StoredImage[]) {
   return images.filter((image) => image.status === "error").length;
 }
 
+const MAX_ERROR_MESSAGE_LENGTH = 600;
+
+function looksLikeHTMLResponse(message: string) {
+  return (
+    message.includes("<!doctype") ||
+    message.includes("<html") ||
+    message.includes("<head") ||
+    message.includes("<body") ||
+    message.includes("<style")
+  );
+}
+
+function extractErrorStatusCode(message: string) {
+  return message.match(/\b(?:returned|http)\s+(\d{3})\b/i)?.[1] ?? "";
+}
+
+function truncateErrorMessage(message: string) {
+  if (message.length <= MAX_ERROR_MESSAGE_LENGTH) {
+    return message;
+  }
+  return `${message.slice(0, MAX_ERROR_MESSAGE_LENGTH).trimEnd()}\n...错误内容过长，已截断。`;
+}
+
 export function formatImageErrorMessage(message: string) {
   const trimmed = String(message || "").trim();
   if (!trimmed) {
@@ -134,6 +157,18 @@ export function formatImageErrorMessage(message: string) {
   }
 
   const normalized = trimmed.toLowerCase();
+  if (looksLikeHTMLResponse(normalized)) {
+    const statusCode = extractErrorStatusCode(trimmed);
+    const source = normalized.includes("f conversation") ? "快速图片通道" : "服务";
+    return [
+      `上游${source}返回了 HTML 错误页面，已隐藏原始内容。`,
+      statusCode ? `状态码：${statusCode}` : "",
+      normalized.includes("f conversation")
+        ? "请重试；服务会自动切换到普通会话链路。"
+        : "请稍后重试，或检查上游账号状态。",
+    ].filter(Boolean).join("\n");
+  }
+
   if (normalized.includes("an error occurred while processing your request")) {
     const requestId = trimmed.match(/request id\s+([a-z0-9-]+)/i)?.[1];
     return [
@@ -151,7 +186,7 @@ export function formatImageErrorMessage(message: string) {
     return "图片生成等待超时，建议稍后重试或增加超时时间，或降低分辨率/质量。";
   }
 
-  return trimmed;
+  return truncateErrorMessage(trimmed);
 }
 
 export function formatImageError(error: unknown) {

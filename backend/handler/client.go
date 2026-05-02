@@ -1135,7 +1135,17 @@ func shouldFallbackFromFConversation(err error) bool {
 		return false
 	}
 	return strings.Contains(message, "f conversation request:") ||
-		strings.Contains(message, "f conversation returned 5")
+		strings.Contains(message, "f conversation returned 5") ||
+		strings.Contains(message, "f conversation returned 403") ||
+		strings.Contains(message, "f conversation returned 429") ||
+		(strings.Contains(message, "f conversation returned") && looksLikeHTMLResponse(message))
+}
+
+func looksLikeHTMLResponse(message string) bool {
+	return strings.Contains(message, "<!doctype") ||
+		strings.Contains(message, "<html") ||
+		strings.Contains(message, "<head") ||
+		strings.Contains(message, "<body")
 }
 
 func extractFileID(pointer string) string {
