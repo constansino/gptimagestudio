@@ -7,6 +7,7 @@ import {
   type ImageModel,
   type ImageQuality,
   type ImageResolutionAccess,
+  type ImageTaskLogEntry,
   type InpaintSourceReference,
 } from "@/lib/api";
 import webConfig from "@/constants/common-env";
@@ -69,6 +70,7 @@ export type ImageConversationTurn = {
   waitingSince?: string;
   startedAt?: string;
   finishedAt?: string;
+  taskLogs?: ImageTaskLogEntry[];
   cancelRequested?: boolean;
 };
 

@@ -60,6 +60,29 @@ function formatWaitingReason(reason?: string) {
   }
 }
 
+function formatTaskLogTime(value?: string) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) {
+    return value || "—";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
+function taskLogLevelClass(level?: string) {
+  switch (String(level || "").toLowerCase()) {
+    case "error":
+      return "bg-rose-50 text-rose-700";
+    case "warn":
+      return "bg-amber-50 text-amber-700";
+    default:
+      return "bg-stone-100 text-stone-600";
+  }
+}
+
 function formatTurnSizeLabel(size?: string) {
   return String(size || "")
     .trim()
@@ -209,6 +232,7 @@ export const ConversationTurns = memo(function ConversationTurns({
               : cancelTaskId
               ? "取消排队"
               : "准备中";
+        const taskLogs = turn.taskLogs ?? [];
 
         return (
           <div key={turn.id} className="space-y-4">
@@ -323,10 +347,8 @@ export const ConversationTurns = memo(function ConversationTurns({
               {turn.images.length > 0 ? (
                 <div
                   className={cn(
-                    "grid gap-4",
-                    turn.images.length === 1
-                      ? "grid-cols-1"
-                      : "grid-cols-1 lg:grid-cols-2",
+                    "flex flex-wrap items-start gap-4",
+                    turn.images.length === 1 ? "max-w-full" : "",
                   )}
                 >
                   {turn.images.map((image, index) => {
@@ -343,9 +365,9 @@ export const ConversationTurns = memo(function ConversationTurns({
                         className={cn(
                           "overflow-hidden rounded-[22px] border border-stone-200 bg-white shadow-sm",
                           image.status === "success" &&
-                            "w-fit max-w-[75%] justify-self-start",
+                            "w-fit max-w-full",
                           image.status !== "success" &&
-                            "w-full max-w-[270px] justify-self-start",
+                            "w-[min(270px,100%)] max-w-full",
                         )}
                       >
                         {image.status === "success" && imageDataUrl ? (
@@ -454,6 +476,42 @@ export const ConversationTurns = memo(function ConversationTurns({
                     );
                   })}
                 </div>
+              ) : null}
+              {taskLogs.length > 0 ? (
+                <details className="rounded-2xl border border-stone-200 bg-white/85 text-sm text-stone-600 shadow-sm">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-medium text-stone-700 [&::-webkit-details-marker]:hidden">
+                    <span>任务日志</span>
+                    <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-500">
+                      {taskLogs.length} 条
+                    </span>
+                  </summary>
+                  <div className="max-h-64 overflow-auto border-t border-stone-100 px-4 py-3">
+                    <div className="space-y-2">
+                      {taskLogs.slice(-80).map((log, logIndex) => (
+                        <div
+                          key={`${log.time}-${log.event}-${log.unitIndex}-${logIndex}`}
+                          className="grid grid-cols-[72px_56px_1fr] items-start gap-2 rounded-xl bg-stone-50 px-3 py-2 text-xs leading-5"
+                        >
+                          <span className="whitespace-nowrap text-stone-400">
+                            {formatTaskLogTime(log.time)}
+                          </span>
+                          <span
+                            className={cn(
+                              "w-fit rounded-full px-2 py-0.5 text-[10px] font-medium uppercase",
+                              taskLogLevelClass(log.level),
+                            )}
+                          >
+                            {log.level || "info"}
+                          </span>
+                          <span className="min-w-0 break-words text-stone-600">
+                            {log.unitIndex >= 0 ? `#${log.unitIndex + 1} · ` : ""}
+                            {log.message || log.event}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
               ) : null}
               {isCancelableTask ? (
                 <div className="flex px-1">

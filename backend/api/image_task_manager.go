@@ -16,6 +16,7 @@ import (
 
 const maxImageTaskDeferredAttempts = 5
 const imageTaskRetentionAfterFinish = 30 * time.Minute
+const maxImageTaskLogEntries = 200
 
 var (
 	imageTaskRetryBackoffBase = 2 * time.Second
@@ -119,6 +120,17 @@ func (m *imageTaskManager) getTask(id string) (*imageTaskView, *imageTaskSnapsho
 	return m.buildTaskViewLocked(task), m.snapshotLocked(), nil
 }
 
+func (m *imageTaskManager) taskLogs(id string) ([]imageTaskLogEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	task := m.tasks[strings.TrimSpace(id)]
+	if task == nil {
+		return nil, fmt.Errorf("task not found")
+	}
+	return append([]imageTaskLogEntry(nil), task.Logs...), nil
+}
+
 func (m *imageTaskManager) waitForTask(ctx context.Context, taskID string) (*imageTaskView, error) {
 	if taskID = strings.TrimSpace(taskID); taskID == "" {
 		return nil, fmt.Errorf("task id is required")
@@ -175,6 +187,7 @@ func (m *imageTaskManager) cancelTask(id string) (*imageTaskView, error) {
 				task.Images[index].Error = "任务已取消"
 			}
 		}
+		appendImageTaskLog(task, "warn", "task.cancelled", -1, "排队任务已取消")
 	default:
 		now := time.Now().UTC()
 		task.CancelRequested = true
@@ -195,6 +208,7 @@ func (m *imageTaskManager) cancelTask(id string) (*imageTaskView, error) {
 			task.Status = imageTaskStatusCancelled
 			task.FinishedAt = now
 		}
+		appendImageTaskLog(task, "warn", "task.cancel_requested", -1, "已提交取消请求，正在等待运行中的子任务结束")
 	}
 	cleanupAt := m.retentionDeadlineForTaskLocked(task)
 	view := m.buildTaskViewLocked(task)
@@ -408,6 +422,27 @@ func (m *imageTaskManager) tryScheduleOne() bool {
 		current.Units[unitIndex].NextAttemptAt = time.Time{}
 		current.Units[unitIndex].Cancel = cancel
 		m.runningUnits++
+		accountType := "未知"
+		authName := "未知"
+		if lease != nil {
+			accountType = firstNonEmpty(strings.TrimSpace(lease.account.Type), accountType)
+			if lease.auth != nil {
+				authName = firstNonEmpty(strings.TrimSpace(lease.auth.Name), authName)
+			}
+		}
+		appendImageTaskLog(
+			current,
+			"info",
+			"unit.start",
+			unitIndex,
+			fmt.Sprintf(
+				"子图 #%d 开始执行，第 %d 次尝试，账号类型 %s，账号文件 %s",
+				unitIndex+1,
+				current.Units[unitIndex].DeferredCount+1,
+				accountType,
+				authName,
+			),
+		)
 		view := m.buildTaskViewLocked(current)
 		snapshot := m.snapshotLocked()
 		subscribers := m.subscriberChannelsLocked()
@@ -460,6 +495,7 @@ func (m *imageTaskManager) runUnit(taskID string, unitIndex int, lease *imageTas
 		task.Units[unitIndex].NextAttemptAt = time.Time{}
 		task.Images[unitIndex].Status = "error"
 		task.Images[unitIndex].Error = "任务已取消"
+		appendImageTaskLog(task, "warn", "unit.cancelled", unitIndex, fmt.Sprintf("子图 #%d 已取消", unitIndex+1))
 	} else if errors.As(err, &deferredErr) {
 		task.Units[unitIndex].DeferredCount++
 		if task.Units[unitIndex].DeferredCount > maxImageTaskDeferredAttempts {
@@ -473,6 +509,7 @@ func (m *imageTaskManager) runUnit(taskID string, unitIndex int, lease *imageTas
 			task.Units[unitIndex].NextAttemptAt = time.Time{}
 			task.Images[unitIndex].Status = "error"
 			task.Images[unitIndex].Error = message
+			appendImageTaskLog(task, "error", "unit.failed", unitIndex, fmt.Sprintf("子图 #%d 自动重试耗尽：%s", unitIndex+1, message))
 		} else {
 			backoff := imageTaskRetryBackoffDuration(task.Units[unitIndex].DeferredCount)
 			task.Units[unitIndex].Status = imageTaskStatusQueued
@@ -485,6 +522,7 @@ func (m *imageTaskManager) runUnit(taskID string, unitIndex int, lease *imageTas
 			blocker := imageTaskRetryBackoffBlocker(now, task.Units[unitIndex].NextAttemptAt)
 			task.WaitingReason = imageTaskWaitingReason(blocker.Code)
 			task.Blockers = []imageTaskBlocker{blocker}
+			appendImageTaskLog(task, "warn", "unit.retry", unitIndex, fmt.Sprintf("子图 #%d 临时失败，%s 后自动重试：%s", unitIndex+1, backoff.Round(time.Second), deferredErr.Error()))
 		}
 	} else if err != nil {
 		task.Units[unitIndex].FinishedAt = now
@@ -492,6 +530,7 @@ func (m *imageTaskManager) runUnit(taskID string, unitIndex int, lease *imageTas
 		task.Units[unitIndex].Error = err.Error()
 		task.Images[unitIndex].Status = "error"
 		task.Images[unitIndex].Error = err.Error()
+		appendImageTaskLog(task, "error", "unit.failed", unitIndex, fmt.Sprintf("子图 #%d 失败：%s", unitIndex+1, err.Error()))
 	} else if len(images) > 0 {
 		task.Units[unitIndex].FinishedAt = now
 		task.Units[unitIndex].Status = imageTaskStatusSucceeded
@@ -499,6 +538,7 @@ func (m *imageTaskManager) runUnit(taskID string, unitIndex int, lease *imageTas
 		image.ID = task.Images[unitIndex].ID
 		image.Status = "success"
 		task.Images[unitIndex] = image
+		appendImageTaskLog(task, "info", "unit.succeeded", unitIndex, fmt.Sprintf("子图 #%d 生成成功，返回 %d 张图片", unitIndex+1, len(images)))
 	}
 
 	queuedUnits := 0
@@ -588,6 +628,7 @@ func (m *imageTaskManager) failTask(taskID string, err error) {
 			task.Images[index].Error = err.Error()
 		}
 	}
+	appendImageTaskLog(task, "error", "task.failed", -1, fmt.Sprintf("任务失败：%s", err.Error()))
 	view := m.buildTaskViewLocked(task)
 	snapshot := m.snapshotLocked()
 	subscribers := m.subscriberChannelsLocked()
@@ -611,10 +652,18 @@ func (m *imageTaskManager) updateTaskBlocker(taskID string, blocker imageTaskBlo
 		m.mu.Unlock()
 		return
 	}
+	previousReason := task.WaitingReason
+	previousDetail := ""
+	if len(task.Blockers) > 0 {
+		previousDetail = task.Blockers[0].Detail
+	}
 	task.WaitingReason = imageTaskWaitingReason(blocker.Code)
 	task.Blockers = nil
 	if blocker.Code != "" {
 		task.Blockers = []imageTaskBlocker{blocker}
+	}
+	if blocker.Code != "" && (previousReason != task.WaitingReason || previousDetail != blocker.Detail) {
+		appendImageTaskLog(task, "warn", "task.waiting", -1, firstNonEmpty(strings.TrimSpace(blocker.Detail), "任务正在等待可用账号或并发槽位"))
 	}
 	view := m.buildTaskViewLocked(task)
 	snapshot := m.snapshotLocked()
@@ -640,6 +689,7 @@ func (m *imageTaskManager) copyTask(taskID string) *imageTask {
 	copy.Units = append([]imageTaskUnit(nil), task.Units...)
 	copy.SourceImages = append([]imageTaskSourceImage(nil), task.SourceImages...)
 	copy.Blockers = append([]imageTaskBlocker(nil), task.Blockers...)
+	copy.Logs = append([]imageTaskLogEntry(nil), task.Logs...)
 	return &copy
 }
 
@@ -838,7 +888,7 @@ func (m *imageTaskManager) newTask(req createImageTaskRequest) (*imageTask, erro
 		})
 	}
 
-	return &imageTask{
+	task := &imageTask{
 		ID:              id,
 		ConversationID:  strings.TrimSpace(req.ConversationID),
 		TurnID:          strings.TrimSpace(req.TurnID),
@@ -860,7 +910,22 @@ func (m *imageTaskManager) newTask(req createImageTaskRequest) (*imageTask, erro
 		Status:          imageTaskStatusQueued,
 		Images:          images,
 		Units:           units,
-	}, nil
+	}
+	appendImageTaskLog(
+		task,
+		"info",
+		"task.created",
+		-1,
+		fmt.Sprintf(
+			"任务创建：%d 张，单任务并行 %d，模型 %s，尺寸 %s，质量 %s",
+			task.Count,
+			task.parallelLimit(),
+			task.Model,
+			firstNonEmpty(task.Size, "auto"),
+			firstNonEmpty(task.Quality, "auto"),
+		),
+	)
+	return task, nil
 }
 
 func (m *imageTaskManager) nextQueuedUnitIndexLocked(task *imageTask) int {
@@ -1032,6 +1097,43 @@ func (m *imageTaskManager) maxRunningLocked() int {
 	return maxRunning
 }
 
+func appendImageTaskLog(task *imageTask, level, event string, unitIndex int, message string) {
+	if task == nil {
+		return
+	}
+	entry := imageTaskLogEntry{
+		Time:      time.Now().UTC().Format(time.RFC3339Nano),
+		Level:     firstNonEmpty(strings.TrimSpace(level), "info"),
+		Event:     firstNonEmpty(strings.TrimSpace(event), "task.event"),
+		UnitIndex: unitIndex,
+		Message:   sanitizeImageTaskLogMessage(message),
+	}
+	task.Logs = append(task.Logs, entry)
+	if len(task.Logs) > maxImageTaskLogEntries {
+		task.Logs = task.Logs[len(task.Logs)-maxImageTaskLogEntries:]
+	}
+}
+
+func sanitizeImageTaskLogMessage(message string) string {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return "无详情"
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.Contains(lower, "<!doctype") ||
+		strings.Contains(lower, "<html") ||
+		strings.Contains(lower, "<head") ||
+		strings.Contains(lower, "<body") {
+		return "上游返回 HTML 错误页，原始内容已隐藏"
+	}
+	trimmed = strings.Join(strings.Fields(trimmed), " ")
+	const maxLen = 600
+	if len(trimmed) <= maxLen {
+		return trimmed
+	}
+	return trimmed[:maxLen] + "...（已截断）"
+}
+
 func (task *imageTask) parallelLimit() int {
 	if task == nil {
 		return 1
@@ -1087,6 +1189,7 @@ func (m *imageTaskManager) buildTaskViewLocked(task *imageTask) *imageTaskView {
 		WaitingReason:   task.WaitingReason,
 		Blockers:        append([]imageTaskBlocker(nil), task.Blockers...),
 		Images:          append([]imagehistory.Image(nil), task.Images...),
+		Logs:            append([]imageTaskLogEntry(nil), task.Logs...),
 		Error:           task.Error,
 		CancelRequested: task.CancelRequested,
 	}

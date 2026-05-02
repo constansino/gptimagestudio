@@ -543,6 +543,7 @@ export function useImageSubmit({
                 queuePosition: result.task.queuePosition,
                 waitingReason: result.task.waitingReason,
                 waitingDetail: result.task.blockers?.[0]?.detail,
+                taskLogs: result.task.logs,
               }
             : turn,
         ),

@@ -73,6 +73,14 @@ type imageTaskBlocker struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+type imageTaskLogEntry struct {
+	Time      string `json:"time"`
+	Level     string `json:"level"`
+	Event     string `json:"event"`
+	UnitIndex int    `json:"unitIndex"`
+	Message   string `json:"message"`
+}
+
 type imageTaskSourceSnapshot struct {
 	Workspace int `json:"workspace"`
 	Compat    int `json:"compat"`
@@ -101,6 +109,7 @@ type imageTaskView struct {
 	WaitingReason   imageTaskWaitingReason `json:"waitingReason,omitempty"`
 	Blockers        []imageTaskBlocker     `json:"blockers,omitempty"`
 	Images          []imagehistory.Image   `json:"images"`
+	Logs            []imageTaskLogEntry    `json:"logs,omitempty"`
 	Error           string                 `json:"error,omitempty"`
 	CancelRequested bool                   `json:"cancelRequested,omitempty"`
 }
@@ -182,6 +191,7 @@ type imageTask struct {
 	Images          []imagehistory.Image
 	Error           string
 	Units           []imageTaskUnit
+	Logs            []imageTaskLogEntry
 	ActiveUnits     int
 	CancelRequested bool
 }

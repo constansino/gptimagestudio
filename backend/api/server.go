@@ -416,6 +416,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/image/tasks/snapshot", s.requireUIAuth(http.HandlerFunc(s.handleImageTaskSnapshot)))
 	mux.Handle("GET /api/image/tasks/stream", s.requireUIAuth(http.HandlerFunc(s.handleImageTaskStream)))
 	mux.Handle("GET /api/image/tasks/{id}", s.requireUIAuth(http.HandlerFunc(s.handleGetImageTask)))
+	mux.Handle("GET /api/image/tasks/{id}/logs", s.requireUIAuth(http.HandlerFunc(s.handleGetImageTaskLogs)))
 	mux.Handle("DELETE /api/image/tasks/{id}", s.requireUIAuth(http.HandlerFunc(s.handleCancelImageTask)))
 
 	mux.Handle("POST /v1/images/generations", s.requireImageAuth(http.HandlerFunc(s.handleImageGenerations)))

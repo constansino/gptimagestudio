@@ -55,6 +55,19 @@ func (s *Server) handleGetImageTask(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleGetImageTaskLogs(w http.ResponseWriter, r *http.Request) {
+	if s.imageTasks == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "image task manager is unavailable"})
+		return
+	}
+	items, err := s.imageTasks.taskLogs(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (s *Server) handleCancelImageTask(w http.ResponseWriter, r *http.Request) {
 	if s.imageTasks == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "image task manager is unavailable"})

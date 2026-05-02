@@ -53,6 +53,14 @@ export type ImageTaskBlocker = {
   detail?: string;
 };
 
+export type ImageTaskLogEntry = {
+  time: string;
+  level: "info" | "warn" | "error" | string;
+  event: string;
+  unitIndex: number;
+  message: string;
+};
+
 export type ImageTaskView = {
   id: string;
   conversationId: string;
@@ -69,6 +77,7 @@ export type ImageTaskView = {
   waitingReason?: ImageTaskWaitingReason;
   blockers?: ImageTaskBlocker[];
   images: ImageResponseItem[];
+  logs?: ImageTaskLogEntry[];
   error?: string;
   cancelRequested?: boolean;
 };
@@ -262,6 +271,10 @@ type ImageTaskListResponse = {
 type ImageTaskResponse = {
   task: ImageTaskView;
   snapshot: ImageTaskSnapshot;
+};
+
+type ImageTaskLogResponse = {
+  items: ImageTaskLogEntry[];
 };
 
 export type ConfigPayload = {
@@ -898,6 +911,12 @@ export async function createImageTask(payload: {
 
 export async function listImageTasks() {
   return httpRequest<ImageTaskListResponse>("/api/image/tasks");
+}
+
+export async function fetchImageTaskLogs(taskId: string) {
+  return httpRequest<ImageTaskLogResponse>(
+    `/api/image/tasks/${encodeURIComponent(taskId)}/logs`,
+  );
 }
 
 export async function cancelImageTask(taskId: string) {

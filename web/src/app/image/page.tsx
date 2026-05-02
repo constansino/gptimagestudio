@@ -454,6 +454,7 @@ function applyTaskViewToConversation(
       waitingDetail: task.blockers?.[0]?.detail,
       startedAt: task.startedAt,
       finishedAt: task.finishedAt,
+      taskLogs: task.logs,
       cancelRequested: task.cancelRequested,
       error: mergedError,
       images: mergedImages,
